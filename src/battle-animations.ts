@@ -2645,6 +2645,8 @@ Object.assign($.easing, {
 	},
 });
 
+/* TPP: Comment out sound
+
 interface SMSound {
 	play(): this;
 	pause(): this;
@@ -2663,7 +2665,7 @@ class BattleBGM {
 	 * May be shared with other BGM objects: every battle has its own BattleBGM
 	 * object, but two battles with the same music will have the same SMSound
 	 * object.
-	 */
+	 *TPP/
 	sound: SMSound;
 	isPlaying = false;
 	constructor(sound: SMSound) {
@@ -2777,7 +2779,7 @@ const BattleSound = new class {
 		return bgm;
 	}
 
-	/** loopstart and loopend are in milliseconds */
+	/** loopstart and loopend are in milliseconds *TPP/
 	loadBgm(url: string, loopstart: number, loopend: number, replaceBGM?: BattleBGM | null) {
 		let sound = this.bgmCache[url];
 		if (sound) {
@@ -2825,6 +2827,8 @@ const BattleSound = new class {
 		this.effectVolume = this.loudnessPercentToAmplitudePercent(effectVolume);
 	}
 };
+
+// */ //TPP: Comment out sound
 
 interface AnimData {
 	anim(scene: BattleScene, args: PokemonSprite[]): void;

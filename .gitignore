@@ -39,6 +39,7 @@ package-lock.json
 /js/panel-teambuilder-team.js
 /js/panel-teamdropdown.js
 /js/panel-battle.js
+/js/webAudioManager.js
 
 /replays/caches/
 /replays/replay-config.inc.php
