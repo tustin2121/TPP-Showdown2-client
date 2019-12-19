@@ -10,7 +10,7 @@
 declare var require: any;
 declare var global: any;
 
-let audioCtx:AudioContext = new (window.AudioContext || window.webkitAudioContext)();
+const audioCtx:AudioContext = new (window.AudioContext || window.webkitAudioContext)();
 
 interface SoundConfig {
 	id: string;
@@ -22,7 +22,18 @@ interface SoundConfig {
 	musicReact?: Function | string;
 }
 
-class Sound {
+interface Media {
+	play(): boolean;
+	pause(): boolean;
+	stop(): boolean;
+	
+	distruct();
+}
+
+//TODO: Reduce Sound to the basics of playing non-looping sound, with basic volume control
+// and stereo panner, and use it for sfx only. Drop mute node in favor of the global mute.
+// Drop resume and fade out functionality and nodes.
+class Sound extends Media {
 	id: string;
 	url: string;
 	loop: [number, number] | null = null;
@@ -259,13 +270,32 @@ class Sound {
         return this; //compatability chaining
     }
 }
- 
+
+
+// TODO: possibly use something similar to what Sound is right now as the basis for a MusicStream
+// class which the state machine uses to control the music states. (Drop the panner node and mute node)
+class MusicStream {
+	
+}
+
+//TODO: Parse the example music state machines into something usable
+class MusicStateMachine {
+	
+}
+
+
+//TODO: Make the soundmanager own global volume nodes for sound, music, notifivation, and mute,
+// which will  be the destinations of all the above objects, and use those nodes for the
+// global volume levels.
+//TODO: When the user adjusts the volume level, play a sound related to it. Play the notification sound
+// when adjusting the notification sound level. Play a bulbasaur cry when adjusting sfx. Play the item
+// pick up jingle when adjusting the music volume.
 class SoundManager {
 	audioCtx: AudioContext;
 	soundBank: {[k:string]:Sound};
 	
 	constructor() {
-		this.audioCtx = audioCtx;
+		this.audioCtx = audioCtx; //for debug visability
 		this.soundBank = {};
 	}
 	
