@@ -36,7 +36,7 @@ type HPColor = 'r' | 'y' | 'g';
 
 class Pokemon implements PokemonDetails, PokemonHealth {
 	name = '';
-	species = '';
+	speciesForme = '';
 
 	/**
 	 * A string representing information extractable from textual
@@ -64,8 +64,8 @@ class Pokemon implements PokemonDetails, PokemonHealth {
 	/**
 	 * `` `${ident}|${details}` ``. Tracked for ease of searching.
 	 *
-	 * As with ident and details, will only change during the first
-	 * switch-in.
+	 * As with ident, blank before the first switch-in, and will only
+	 * change during the first switch-in.
 	 */
 	searchid = '';
 
@@ -102,13 +102,17 @@ class Pokemon implements PokemonDetails, PokemonHealth {
 
 	sprite: PokemonSprite;
 
-	constructor(data: any, side: Side) {
+	constructor(data: PokemonDetails, side: Side) {
 		this.side = side;
-		this.species = data.species;
+		this.speciesForme = data.speciesForme;
 
-		// TODO: stop doing this
-		Object.assign(this, Dex.getTemplate(data.species));
-		Object.assign(this, data);
+		this.details = data.details;
+		this.name = data.name;
+		this.level = data.level;
+		this.shiny = data.shiny;
+		this.gender = data.gender || 'N';
+		this.ident = data.ident;
+		this.searchid = data.searchid;
 
 		this.sprite = side.battle.scene.addPokemonSprite(this);
 	}
@@ -117,19 +121,21 @@ class Pokemon implements PokemonDetails, PokemonHealth {
 		return this.side.active.includes(this);
 	}
 
-	getHPColor(): HPColor {
+	/** @deprecated */
+	private getHPColor(): HPColor {
 		if (this.hpcolor) return this.hpcolor;
 		let ratio = this.hp / this.maxhp;
 		if (ratio > 0.5) return 'g';
 		if (ratio > 0.2) return 'y';
 		return 'r';
 	}
-	getHPColorClass() {
+	/** @deprecated */
+	private getHPColorClass() {
 		switch (this.getHPColor()) {
-		case 'y': return ' hpbar-yellow';
-		case 'r': return ' hpbar-red';
+		case 'y': return 'hpbar hpbar-yellow';
+		case 'r': return 'hpbar hpbar-red';
 		}
-		return '';
+		return 'hpbar';
 	}
 	static getPixelRange(pixels: number, color: HPColor | ''): [number, number] {
 		let epsilon = 0.5 / 714;
@@ -393,7 +399,7 @@ class Pokemon implements PokemonDetails, PokemonHealth {
 	}
 	getWeightKg(serverPokemon?: ServerPokemon) {
 		let autotomizeFactor = this.volatiles.autotomize?.[1] * 100 || 0;
-		return Math.max(this.getTemplate(serverPokemon).weightkg - autotomizeFactor, 0.1);
+		return Math.max(this.getSpecies(serverPokemon).weightkg - autotomizeFactor, 0.1);
 	}
 	getBoostType(boostStat: BoostStatName) {
 		if (!this.boosts[boostStat]) return 'neutral';
@@ -466,7 +472,7 @@ class Pokemon implements PokemonDetails, PokemonHealth {
 		if (this.volatiles.typechange) {
 			types = this.volatiles.typechange[1].split('/');
 		} else {
-			types = this.getTemplate(serverPokemon).types;
+			types = this.getSpecies(serverPokemon).types;
 		}
 		if (this.volatiles.roost && types.includes('Flying')) {
 			types = types.filter(typeName => typeName !== 'Flying');
@@ -509,15 +515,15 @@ class Pokemon implements PokemonDetails, PokemonHealth {
 		const [types, addedType] = this.getTypes(serverPokemon);
 		return addedType ? types.concat(addedType) : types;
 	}
-	getSpecies(serverPokemon?: ServerPokemon): string {
+	getSpeciesForme(serverPokemon?: ServerPokemon): string {
 		return this.volatiles.formechange ? this.volatiles.formechange[1] :
-			(serverPokemon ? serverPokemon.species : this.species);
+			(serverPokemon ? serverPokemon.speciesForme : this.speciesForme);
 	}
-	getTemplate(serverPokemon?: ServerPokemon) {
-		return this.side.battle.dex.getTemplate(this.getSpecies(serverPokemon));
+	getSpecies(serverPokemon?: ServerPokemon) {
+		return this.side.battle.dex.getSpecies(this.getSpeciesForme(serverPokemon));
 	}
-	getBaseTemplate() {
-		return this.side.battle.dex.getTemplate(this.species);
+	getBaseSpecies() {
+		return this.side.battle.dex.getSpecies(this.speciesForme);
 	}
 	reset() {
 		this.clearVolatile();
@@ -525,7 +531,7 @@ class Pokemon implements PokemonDetails, PokemonHealth {
 		this.fainted = false;
 		this.status = '';
 		this.moveTrack = [];
-		this.name = this.name || this.species;
+		this.name = this.name || this.speciesForme;
 	}
 	// This function is used for two things:
 	//   1) The percentage to display beside the HP bar.
@@ -698,8 +704,13 @@ class Side {
 		delete this.sideConditions[id];
 		this.battle.scene.removeSideCondition(this.n, id);
 	}
-	newPokemon(data: any, replaceSlot = -1) {
-		let poke = new Pokemon(data, this);
+	addPokemon(name: string, ident: string, details: string, replaceSlot = -1) {
+		const oldItem = replaceSlot >= 0 ? this.pokemon[replaceSlot].item : undefined;
+
+		const data = this.battle.parseDetails(name, ident, details);
+		const poke = new Pokemon(data, this);
+		if (oldItem) poke.item = oldItem;
+
 		if (!poke.ability && poke.baseAbility) poke.ability = poke.baseAbility;
 		poke.reset();
 
@@ -743,7 +754,7 @@ class Side {
 						if (curPoke === poke) continue;
 						if (curPoke.fainted) continue;
 						if (this.active.indexOf(curPoke) >= 0) continue;
-						if (curPoke.species === 'Zoroark' || curPoke.species === 'Zorua' || curPoke.ability === 'Illusion') {
+						if (curPoke.speciesForme === 'Zoroark' || curPoke.speciesForme === 'Zorua' || curPoke.ability === 'Illusion') {
 							illusionFound = curPoke;
 							break;
 						}
@@ -946,7 +957,7 @@ enum Playback {
 interface PokemonDetails {
 	details: string;
 	name: string;
-	species: string;
+	speciesForme: string;
 	level: number;
 	shiny: boolean;
 	gender: GenderName | '';
@@ -1135,12 +1146,13 @@ class Battle {
 		this.pseudoWeather = [];
 		this.lastMove = '';
 
-		// DOM state
-		this.scene.reset();
-
 		for (const side of this.sides) {
 			if (side) side.reset();
 		}
+		this.myPokemon = null;
+
+		// DOM state
+		this.scene.reset();
 
 		// activity queue state
 		this.activeMoveIsSpread = null;
@@ -1621,7 +1633,7 @@ class Battle {
 			if (this.gen === 1 && stat === 'spa') stat = 'spc';
 			let amount = parseInt(args[3], 10);
 			if (amount === 0) {
-				this.scene.resultAnim(poke, 'Highest ' + BattleStats[stat], 'neutral');
+				this.scene.resultAnim(poke, 'already ' + poke.getBoost(stat), 'neutral');
 				this.log(args, kwArgs);
 				break;
 			}
@@ -1648,7 +1660,7 @@ class Battle {
 			if (this.gen === 1 && stat === 'spa') stat = 'spc';
 			let amount = parseInt(args[3], 10);
 			if (amount === 0) {
-				this.scene.resultAnim(poke, 'Lowest ' + BattleStats[stat], 'bad');
+				this.scene.resultAnim(poke, 'already ' + poke.getBoost(stat), 'neutral');
 				this.log(args, kwArgs);
 				break;
 			}
@@ -2215,19 +2227,19 @@ class Battle {
 			poke.removeVolatile('typeadd' as ID);
 			poke.removeVolatile('typechange' as ID);
 
-			let newSpecies = args[2];
-			let commaIndex = newSpecies.indexOf(',');
+			let newSpeciesForme = args[2];
+			let commaIndex = newSpeciesForme.indexOf(',');
 			if (commaIndex !== -1) {
-				let level = newSpecies.substr(commaIndex + 1).trim();
+				let level = newSpeciesForme.substr(commaIndex + 1).trim();
 				if (level.charAt(0) === 'L') {
 					poke.level = parseInt(level.substr(1), 10);
 				}
-				newSpecies = args[2].substr(0, commaIndex);
+				newSpeciesForme = args[2].substr(0, commaIndex);
 			}
-			let template = this.dex.getTemplate(newSpecies);
+			let species = this.dex.getSpecies(newSpeciesForme);
 
-			poke.species = newSpecies;
-			poke.ability = poke.baseAbility = (template.abilities ? template.abilities['0'] : '');
+			poke.speciesForme = newSpeciesForme;
+			poke.ability = poke.baseAbility = (species.abilities ? species.abilities['0'] : '');
 
 			poke.details = args[2];
 			poke.searchid = args[1].substr(0, 2) + args[1].substr(3) + '|' + args[2];
@@ -2249,23 +2261,23 @@ class Battle {
 			poke.boosts = {...tpoke.boosts};
 			poke.copyTypesFrom(tpoke);
 			poke.ability = tpoke.ability;
-			const species = (tpoke.volatiles.formechange ? tpoke.volatiles.formechange[1] : tpoke.species);
+			const speciesForme = (tpoke.volatiles.formechange ? tpoke.volatiles.formechange[1] : tpoke.speciesForme);
 			const pokemon = tpoke;
 			const shiny = tpoke.shiny;
 			const gender = tpoke.gender;
 			poke.addVolatile('transform' as ID, pokemon, shiny, gender);
-			poke.addVolatile('formechange' as ID, species);
+			poke.addVolatile('formechange' as ID, speciesForme);
 			for (const trackedMove of tpoke.moveTrack) {
 				poke.rememberMove(trackedMove[0], 0);
 			}
 			this.scene.animTransform(poke);
 			this.scene.resultAnim(poke, 'Transformed', 'good');
-			this.log(['-transform', args[1], args[2], tpoke.species], kwArgs);
+			this.log(['-transform', args[1], args[2], tpoke.speciesForme], kwArgs);
 			break;
 		}
 		case '-formechange': {
 			let poke = this.getPokemon(args[1])!;
-			let template = Dex.getTemplate(args[2]);
+			let species = Dex.getSpecies(args[2]);
 			let fromeffect = Dex.getEffect(kwArgs.from);
 			let isCustomAnim = false;
 			poke.removeVolatile('typeadd' as ID);
@@ -2275,7 +2287,7 @@ class Battle {
 			if (!kwArgs.silent) {
 				this.activateAbility(poke, fromeffect);
 			}
-			poke.addVolatile('formechange' as ID, template.species); // the formechange volatile reminds us to revert the sprite change on switch-out
+			poke.addVolatile('formechange' as ID, species.name); // the formechange volatile reminds us to revert the sprite change on switch-out
 			this.scene.animTransform(poke, isCustomAnim);
 			this.log(args, kwArgs);
 			break;
@@ -2667,7 +2679,7 @@ class Battle {
 				poke.removeVolatile('telekinesis' as ID);
 				this.scene.anim(poke, {time: 100});
 				break;
-			case 'skillswap':
+			case 'skillswap': case 'wanderingspirit':
 				if (this.gen <= 4) break;
 				let pokeability = Dex.sanitizeName(kwArgs.ability) || target!.ability;
 				let targetability = Dex.sanitizeName(kwArgs.ability2) || poke.ability;
@@ -2857,19 +2869,26 @@ class Battle {
 		}
 		if (foe) siden = (siden ? 0 : 1);
 
-		let data = Dex.getTemplate(name);
+		let data = Dex.getSpecies(name);
 		return data.spriteData[siden];
 	}
 	*/
-	parseDetails(name: string, pokemonid: string, details = "", output: PokemonDetails = {} as any) {
+	/**
+	 * @param name Leave blank for Team Preview
+	 * @param pokemonid Leave blank for Team Preview
+	 * @param details
+	 * @param output
+	 */
+	parseDetails(name: string, pokemonid: string, details: string, output: PokemonDetails = {} as any) {
+		const isTeamPreview = !name;
 		output.details = details;
 		output.name = name;
-		output.species = name;
+		output.speciesForme = name;
 		output.level = 100;
 		output.shiny = false;
 		output.gender = '';
-		output.ident = (name ? pokemonid : '');
-		output.searchid = (name ? (pokemonid + '|' + details) : '');
+		output.ident = (!isTeamPreview ? pokemonid : '');
+		output.searchid = (!isTeamPreview ? `${pokemonid}|${details}` : '');
 		let splitDetails = details.split(', ');
 		if (splitDetails[splitDetails.length - 1] === 'shiny') {
 			output.shiny = true;
@@ -2883,7 +2902,7 @@ class Battle {
 			output.level = parseInt(splitDetails[1].substr(1), 10) || 100;
 		}
 		if (splitDetails[0]) {
-			output.species = splitDetails[0];
+			output.speciesForme = splitDetails[0];
 		}
 		return output;
 	}
@@ -2950,130 +2969,79 @@ class Battle {
 		}
 		return {name, siden, slot, pokemonid};
 	}
-	getPokemon(pokemonid: string, details?: string) {
-		let isNew = false; // if true, don't match any pokemon that already exists (for Team Preview)
-		let isSwitch = false; // if true, don't match an active, fainted, or immediately-previously switched-out pokemon
-		let isInactive = false; // if true, don't match an active pokemon
-		let createIfNotFound = false; // if true, create the pokemon if a match wasn't found
+	getSwitchedPokemon(pokemonid: string, details: string) {
+		if (pokemonid === '??') throw new Error(`pokemonid not passed`);
+		const {name, siden, slot, pokemonid: parsedPokemonid} = this.parsePokemonId(pokemonid);
+		pokemonid = parsedPokemonid;
 
-		if (pokemonid === undefined || pokemonid === '??') return null;
-		if (pokemonid.substr(0, 5) === 'new: ') {
-			pokemonid = pokemonid.substr(5);
-			isNew = true;
-			createIfNotFound = true; // obviously
-		}
-		if (pokemonid.substr(0, 10) === 'switchin: ') {
-			pokemonid = pokemonid.substr(10);
-			isSwitch = true;
-			createIfNotFound = true;
-		}
-		let parseIdResult = this.parsePokemonId(pokemonid);
-		let {name, siden, slot} = parseIdResult;
-		pokemonid = parseIdResult.pokemonid;
+		const searchid = `${pokemonid}|${details}`;
+		const side = this.sides[siden];
 
-		if (!details) {
-			if (siden < 0) return null;
-			if (this.sides[siden].active[slot]) return this.sides[siden].active[slot];
-			if (slot >= 0) isInactive = true;
-		}
+		// search inactive revealed pokemon
+		for (let i = 0; i < side.pokemon.length; i++) {
+			let pokemon = side.pokemon[i];
+			if (pokemon.fainted) continue;
+			// already active, can't be switching in
+			if (side.active.includes(pokemon)) continue;
+			// just switched out, can't be switching in
+			if (pokemon === side.lastPokemon && !side.active[slot]) continue;
 
-		let searchid = '';
-		if (details) searchid = pokemonid + '|' + details;
-
-		// search p1's pokemon
-		if (siden !== this.p2.n && !isNew) {
-			const active = this.p1.active[slot];
-			if (active?.searchid === searchid && !isSwitch) {
-				active.slot = slot;
-				return active;
+			if (pokemon.searchid === searchid) {
+				// exact match
+				if (slot >= 0) pokemon.slot = slot;
+				return pokemon;
 			}
-			for (let i = 0; i < this.p1.pokemon.length; i++) {
-				let pokemon = this.p1.pokemon[i];
-				if (pokemon.fainted && (isNew || isSwitch)) continue;
-				if (isSwitch || isInactive) {
-					if (this.p1.active.indexOf(pokemon) >= 0) continue;
-				}
-				if (isSwitch && pokemon === this.p1.lastPokemon && !this.p1.active[slot]) continue;
-				if ((searchid && pokemon.searchid === searchid) || // exact match
-					(!searchid && pokemon.ident === pokemonid)) { // name matched, good enough
-					if (slot >= 0) pokemon.slot = slot;
-					return pokemon;
-				}
-				if (!pokemon.searchid && pokemon.checkDetails(details)) { // switch-in matches Team Preview entry
-					pokemon = this.p1.newPokemon(this.parseDetails(name, pokemonid, details, {item: pokemon.item} as any), i);
-					if (slot >= 0) pokemon.slot = slot;
-					return pokemon;
-				}
+			if (!pokemon.searchid && pokemon.checkDetails(details)) {
+				// switch-in matches Team Preview entry
+				pokemon = side.addPokemon(name, pokemonid, details, i);
+				if (slot >= 0) pokemon.slot = slot;
+				return pokemon;
 			}
 		}
-
-		// search p2's pokemon
-		if (siden !== this.p1.n && !isNew) {
-			const active = this.p2.active[slot];
-			if (active?.searchid === searchid && !isSwitch) {
-				if (slot >= 0) active.slot = slot;
-				return active;
-			}
-			for (let i = 0; i < this.p2.pokemon.length; i++) {
-				let pokemon = this.p2.pokemon[i];
-				if (pokemon.fainted && (isNew || isSwitch)) continue;
-				if (isSwitch || isInactive) {
-					if (this.p2.active.indexOf(pokemon) >= 0) continue;
-				}
-				if (isSwitch && pokemon === this.p2.lastPokemon && !this.p2.active[slot]) continue;
-				if ((searchid && pokemon.searchid === searchid) || // exact match
-					(!searchid && pokemon.ident === pokemonid)) { // name matched, good enough
-					if (slot >= 0) pokemon.slot = slot;
-					return pokemon;
-				}
-				if (!pokemon.searchid && pokemon.checkDetails(details)) { // switch-in matches Team Preview entry
-					pokemon = this.p2.newPokemon(this.parseDetails(name, pokemonid, details, {item: pokemon.item} as any), i);
-					if (slot >= 0) pokemon.slot = slot;
-					return pokemon;
-				}
-			}
-		}
-
-		if (!details || !createIfNotFound) return null;
 
 		// pokemon not found, create a new pokemon object for it
+		const pokemon = side.addPokemon(name, pokemonid, details);
+		if (slot >= 0) pokemon.slot = slot;
+		return pokemon;
+	}
+	rememberTeamPreviewPokemon(sideid: string, details: string) {
+		const {siden} = this.parsePokemonId(sideid);
 
-		if (siden < 0) throw new Error("Invalid pokemonid passed to getPokemon");
-
-		let species = name;
-		let gender = '';
-		let level = 100;
-		let shiny = false;
-		if (details) {
-			let splitDetails = details.split(', ');
-			if (splitDetails[splitDetails.length - 1] === 'shiny') {
-				shiny = true;
-				splitDetails.pop();
-			}
-			if (splitDetails[splitDetails.length - 1] === 'M' || splitDetails[splitDetails.length - 1] === 'F') {
-				gender = splitDetails[splitDetails.length - 1];
-				splitDetails.pop();
-			}
-			if (splitDetails[1]) {
-				level = parseInt(splitDetails[1].substr(1), 10) || 100;
-			}
-			if (splitDetails[0]) {
-				species = splitDetails[0];
+		return this.sides[siden].addPokemon('', '', details);
+	}
+	findCorrespondingPokemon(serverPokemon: {ident: string, details: string}) {
+		const {siden} = this.parsePokemonId(serverPokemon.ident);
+		const searchid = `${serverPokemon.ident}|${serverPokemon.details}`;
+		for (const pokemon of this.sides[siden].pokemon) {
+			if (pokemon.searchid === searchid) {
+				return pokemon;
 			}
 		}
-		if (slot < 0) slot = 0;
-		let pokemon = this.sides[siden].newPokemon({
-			species,
-			details,
-			name,
-			ident: (name ? pokemonid : ''),
-			searchid: (name ? (pokemonid + '|' + details) : ''),
-			level,
-			gender,
-			shiny,
-			slot,
-		}, isNew ? -2 : -1);
-		return pokemon;
+		return null;
+	}
+	getPokemon(pokemonid: string | undefined) {
+		if (!pokemonid || pokemonid === '??' || pokemonid === 'null' || pokemonid === 'false') {
+			return null;
+		}
+		const {siden, slot, pokemonid: parsedPokemonid} = this.parsePokemonId(pokemonid);
+		pokemonid = parsedPokemonid;
+
+		/** if true, don't match an active pokemon */
+		const isInactive = (slot < 0);
+		const side = this.sides[siden];
+
+		// search player's pokemon
+		if (!isInactive && side.active[slot]) return side.active[slot];
+
+		for (const pokemon of side.pokemon) {
+			if (isInactive && side.active.includes(pokemon)) continue;
+			if (pokemon.ident === pokemonid) { // name matched, good enough
+				if (slot >= 0) pokemon.slot = slot;
+				return pokemon;
+			}
+		}
+
+		return null;
 	}
 	getSide(sidename: string): Side {
 		if (sidename === 'p1' || sidename.substr(0, 3) === 'p1:') return this.p1;
@@ -3300,7 +3268,7 @@ class Battle {
 			break;
 		}
 		case 'poke': {
-			let pokemon = this.getPokemon('new: ' + args[1], args[2])!;
+			let pokemon = this.rememberTeamPreviewPokemon(args[1], args[2])!;
 			if (args[3] === 'item') {
 				pokemon.item = '(exists)';
 			}
@@ -3313,7 +3281,7 @@ class Battle {
 		}
 		case 'switch': case 'drag': case 'replace': {
 			this.endLastTurn();
-			let poke = this.getPokemon('switchin: ' + args[1], args[2])!;
+			let poke = this.getSwitchedPokemon(args[1], args[2])!;
 			let slot = poke.slot;
 			poke.healthParse(args[3]);
 			poke.removeVolatile('itemremoved' as ID);
@@ -3568,4 +3536,5 @@ class Battle {
 if (typeof require === 'function') {
 	// in Node
 	(global as any).Battle = Battle;
+	(global as any).Pokemon = Pokemon;
 }

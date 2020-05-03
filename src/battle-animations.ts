@@ -96,7 +96,7 @@ class BattleScene {
 			if (!pokemonId) return '';
 			if (battle.ignoreNicks || battle.ignoreOpponent) {
 				const pokemon = battle.getPokemon(pokemonId);
-				if (pokemon) return pokemon.species;
+				if (pokemon) return pokemon.speciesForme;
 			}
 			if (!pokemonId.startsWith('p1') && !pokemonId.startsWith('p2')) return '???pokemon:' + pokemonId + '???';
 			if (pokemonId.charAt(3) === ':') return pokemonId.slice(4).trim();
@@ -244,7 +244,7 @@ class BattleScene {
 		this.updateBgm();
 		if (this.battle.resumeButton) {
 			this.$frame.append('<div class="playbutton"><button data-action="resume"><i class="fa fa-play icon-play"></i> Resume</button></div>');
-			this.$frame.find('div.playbutton button').click(this.battle.resumeButton);
+			this.$frame.find<HTMLElement>('div.playbutton button').click(this.battle.resumeButton);
 		}
 	}
 	resume() {
@@ -585,9 +585,9 @@ class BattleScene {
 
 	getDetailsText(pokemon: Pokemon) {
 		let name = pokemon.side?.n &&
-			(this.battle.ignoreOpponent || this.battle.ignoreNicks) ? pokemon.species : pokemon.name;
-		if (name !== pokemon.species) {
-				name += ' (' + pokemon.species + ')';
+			(this.battle.ignoreOpponent || this.battle.ignoreNicks) ? pokemon.speciesForme : pokemon.name;
+		if (name !== pokemon.speciesForme) {
+				name += ' (' + pokemon.speciesForme + ')';
 		}
 		if (pokemon === pokemon.side.active[0]) {
 			name += ' (active)';
@@ -622,10 +622,10 @@ class BattleScene {
 		let hasIllusion = false;
 		if (speciesOverage) {
 			for (let i = 0; i < side.pokemon.length; i++) {
-				const species = side.pokemon[i].getBaseTemplate().baseSpecies;
+				const species = side.pokemon[i].getBaseSpecies().baseSpecies;
 				if (speciesOverage && speciesTable.includes(species)) {
 					for (const sidebarIcon of sidebarIcons) {
-						if (side.pokemon[sidebarIcon[1]!].getBaseTemplate().baseSpecies === species) {
+						if (side.pokemon[sidebarIcon[1]!].getBaseSpecies().baseSpecies === species) {
 							sidebarIcon[0] = 'pokemon-illusion';
 						}
 					}
@@ -644,7 +644,7 @@ class BattleScene {
 				sidebarIcons.push(['pokemon', i]);
 			}
 		}
-		if (!zoroarkRevealed && hasIllusion) {
+		if (!zoroarkRevealed && hasIllusion && sidebarIcons.length < side.totalPokemon) {
 			sidebarIcons.push(['pseudo-zoroark', null]);
 		}
 		while (sidebarIcons.length < side.totalPokemon) {
@@ -712,6 +712,7 @@ class BattleScene {
 		}
 	}
 	teamPreview() {
+		let newBGNum = 0;
 		for (let siden = 0; siden < 2; siden++) {
 			let side = this.battle.sides[siden];
 			let textBuf = '';
@@ -723,12 +724,13 @@ class BattleScene {
 			let lombreCount = 0;
 			for (let i = 0; i < side.pokemon.length; i++) {
 				let pokemon = side.pokemon[i];
-				if (pokemon.species === 'Ludicolo') ludicoloCount++;
-				if (pokemon.species === 'Lombre') lombreCount++;
+				if (pokemon.speciesForme === 'Ludicolo') ludicoloCount++;
+				if (pokemon.speciesForme === 'Lombre') lombreCount++;
 
 				let spriteData = Dex.getSpriteData(pokemon, siden, {
 					gen: this.gen,
 					noScale: true,
+					mod: this.mod,
 				});
 				let y = 0;
 				let x = 0;
@@ -740,15 +742,14 @@ class BattleScene {
 					x = 48 + 100 + 50 * i;
 				}
 				if (textBuf) textBuf += ' / ';
-				textBuf += pokemon.species;
+				textBuf += pokemon.speciesForme;
 				let url = spriteData.url;
 				// if (this.paused) url.replace('/xyani', '/xy').replace('.gif', '.png');
 				buf += '<img src="' + url + '" width="' + spriteData.w + '" height="' + spriteData.h + '" style="position:absolute;top:' + Math.floor(y - spriteData.h / 2) + 'px;left:' + Math.floor(x - spriteData.w / 2) + 'px" />';
 				buf2 += '<div style="position:absolute;top:' + (y + 45) + 'px;left:' + (x - 40) + 'px;width:80px;font-size:10px;text-align:center;color:#FFF;">';
-				if (pokemon.gender === 'F') {
-					buf2 += '<img src="' + Dex.resourcePrefix + 'fx/gender-f.png" width="7" height="10" alt="F" style="margin-bottom:-1px" /> ';
-				} else if (pokemon.gender === 'M') {
-					buf2 += '<img src="' + Dex.resourcePrefix + 'fx/gender-m.png" width="7" height="10" alt="M" style="margin-bottom:-1px" /> ';
+				const gender = pokemon.gender;
+				if (gender === 'M' || gender === 'F') {
+					buf2 += `<img src="${Dex.resourcePrefix}fx/gender-${gender.toLowerCase()}.png" alt="${gender}" width="7" height="10" class="pixelated" style="margin-bottom:-1px" /> `;
 				}
 				if (pokemon.level !== 100) {
 					buf2 += '<span style="text-shadow:#000 1px 1px 0,#000 1px -1px 0,#000 -1px 1px 0,#000 -1px -1px 0"><small>L</small>' + pokemon.level + '</span>';
@@ -766,14 +767,16 @@ class BattleScene {
 			}
 			this.$sprites[siden].html(buf + buf2);
 
-			if (ludicoloCount >= 2) {
-				this.bgmNum = -3;
-			} else if (ludicoloCount + lombreCount >= 2) {
-				this.bgmNum = -2;
+			if (!newBGNum) {
+				if (ludicoloCount >= 2) {
+					newBGNum = -3;
+				} else if (ludicoloCount + lombreCount >= 2) {
+					newBGNum = -2;
+				}
 			}
 		}
-		if (this.bgmNum < 0) {
-			this.setBgm(this.bgmNum);
+		if (newBGNum !== 0) {
+			this.setBgm(newBGNum);
 		}
 		this.wait(1000);
 		this.updateSidebars();
@@ -967,6 +970,7 @@ class BattleScene {
 		const siden = pokemon.side.n;
 		const sprite = new PokemonSprite(Dex.getSpriteData(pokemon, siden, {
 			gen: this.gen,
+			mod: this.mod,
 		}), {
 			x: pokemon.side.x,
 			y: pokemon.side.y,
@@ -1124,6 +1128,37 @@ class BattleScene {
 			this.$spritesFront[siden].append(rock4.$el!);
 			this.sideConditions[siden][id] = [rock1, rock2, rock3, rock4];
 			break;
+		case 'gmaxsteelsurge':
+			const surge1 = new Sprite(BattleEffects.greenmetal1, {
+				display: 'block',
+				x: side.leftof(-30),
+				y: side.y - 20,
+				z: side.z,
+				opacity: 0.5,
+				scale: 0.8,
+			}, this);
+			const surge2 = new Sprite(BattleEffects.greenmetal2, {
+				display: 'block',
+				x: side.leftof(35),
+				y: side.y - 15,
+				z: side.z,
+				opacity: 0.5,
+				scale: 0.8,
+			}, this);
+			const surge3 = new Sprite(BattleEffects.greenmetal1, {
+				display: 'block',
+				x: side.leftof(50),
+				y: side.y - 10,
+				z: side.z,
+				opacity: 0.5,
+				scale: 0.8,
+			}, this);
+
+			this.$spritesFront[siden].append(surge1.$el!);
+			this.$spritesFront[siden].append(surge2.$el!);
+			this.$spritesFront[siden].append(surge3.$el!);
+			this.sideConditions[siden][id] = [surge1, surge2, surge3];
+			break;
 		case 'spikes':
 			let spikeArray = this.sideConditions[siden]['spikes'];
 			if (!spikeArray) {
@@ -1279,7 +1314,7 @@ class BattleScene {
 
 		let $hp = pokemon.sprite.$statbar.find('div.hp');
 		let w = pokemon.hpWidth(150);
-		let hpcolor = pokemon.getHPColor();
+		let hpcolor = BattleScene.getHPColor(pokemon);
 		let callback;
 		if (hpcolor === 'y') {
 			callback = () => { $hp.addClass('hp-yellow'); };
@@ -1302,7 +1337,7 @@ class BattleScene {
 
 		let $hp = pokemon.sprite.$statbar.find('div.hp');
 		let w = pokemon.hpWidth(150);
-		let hpcolor = pokemon.getHPColor();
+		let hpcolor = BattleScene.getHPColor(pokemon);
 		let callback;
 		if (hpcolor === 'g') {
 			callback = () => { $hp.removeClass('hp-yellow hp-red'); };
@@ -1518,6 +1553,12 @@ class BattleScene {
 		}
 		this.battle = null!;
 	}
+	static getHPColor(pokemon: {hp: number, maxhp: number}) {
+		let ratio = pokemon.hp / pokemon.maxhp;
+		if (ratio > 0.5) return 'g';
+		if (ratio > 0.2) return 'y';
+		return 'r';
+	}
 }
 
 interface ScenePos {
@@ -1705,6 +1746,7 @@ class PokemonSprite extends Sprite {
 		if (this.$sub) return;
 		const subsp = Dex.getSpriteData('substitute', this.siden, {
 			gen: this.scene.gen,
+			mod: this.scene.mod,
 		});
 		this.subsp = subsp;
 		this.$sub = $('<img src="' + subsp.url + '" style="display:block;opacity:0;position:absolute"' + (subsp.pixelated ? ' class="pixelated"' : '') + ' />');
@@ -1819,6 +1861,7 @@ class PokemonSprite extends Sprite {
 			if (!this.oldsp) this.oldsp = this.sp;
 			this.sp = Dex.getSpriteData(pokemon, this.isBackSprite ? 0 : 1, {
 				gen: this.scene.gen,
+				mod: this.scene.mod,
 			});
 		} else if (this.oldsp) {
 			this.sp = this.oldsp;
@@ -2211,6 +2254,7 @@ class PokemonSprite extends Sprite {
 		if (!this.scene.animating && !isPermanent) return;
 		let sp = Dex.getSpriteData(pokemon, this.isBackSprite ? 0 : 1, {
 			gen: this.scene.gen,
+			mod: this.scene.mod,
 		});
 		let oldsp = this.sp;
 		if (isPermanent) {
@@ -2222,7 +2266,7 @@ class PokemonSprite extends Sprite {
 		this.cryurl = sp.cryurl;
 
 		if (!this.scene.animating) return;
-		let speciesid = toID(pokemon.getSpecies());
+		let speciesid = toID(pokemon.getSpeciesForme());
 		let doCry = false;
 		const scene = this.scene;
 		if (isCustomAnim) {
@@ -2379,7 +2423,7 @@ class PokemonSprite extends Sprite {
 	dogarsCheck(pokemon: Pokemon) {
 		if (pokemon.side.n === 1) return;
 
-		if (pokemon.species === 'Koffing' && pokemon.name.match(/dogars/i)) {
+		if (pokemon.speciesForme === 'Koffing' && pokemon.name.match(/dogars/i)) {
 			this.scene.setBgm(-1);
 		} else if (this.scene.bgmNum === -1) {
 			this.scene.rollBgm();
@@ -2392,17 +2436,17 @@ class PokemonSprite extends Sprite {
 	getStatbarHTML(pokemon: Pokemon) {
 		let buf = '<div class="statbar' + (this.siden ? ' lstatbar' : ' rstatbar') + '" style="display: none">';
 		const ignoreNick = this.siden && (this.scene.battle.ignoreOpponent || this.scene.battle.ignoreNicks);
-		buf += `<strong>${BattleLog.escapeHTML(ignoreNick ? pokemon.species : pokemon.name)}`;
-		let gender = pokemon.gender;
-		if (gender) {
-			buf += ` <img src="${Dex.resourcePrefix}fx/gender-${gender.toLowerCase()}.png" alt="${gender}" />`;
+		buf += `<strong>${BattleLog.escapeHTML(ignoreNick ? pokemon.speciesForme : pokemon.name)}`;
+		const gender = pokemon.gender;
+		if (gender === 'M' || gender === 'F') {
+			buf += ` <img src="${Dex.resourcePrefix}fx/gender-${gender.toLowerCase()}.png" alt="${gender}" width="7" height="10" class="pixelated" />`;
 		}
 		buf += (pokemon.level === 100 ? `` : ` <small>L${pokemon.level}</small>`);
 
 		let symbol = '';
-		if (pokemon.species.indexOf('-Mega') >= 0) symbol = 'mega';
-		else if (pokemon.species === 'Kyogre-Primal') symbol = 'alpha';
-		else if (pokemon.species === 'Groudon-Primal') symbol = 'omega';
+		if (pokemon.speciesForme.indexOf('-Mega') >= 0) symbol = 'mega';
+		else if (pokemon.speciesForme === 'Kyogre-Primal') symbol = 'alpha';
+		else if (pokemon.speciesForme === 'Groudon-Primal') symbol = 'omega';
 		if (symbol) {
 			buf += ` <img src="${Dex.resourcePrefix}sprites/misc/${symbol}.png" alt="${symbol}" style="vertical-align:text-bottom;" />`;
 		}
@@ -2447,7 +2491,7 @@ class PokemonSprite extends Sprite {
 		}
 		let hpcolor;
 		if (updatePrevhp || updateHp) {
-			hpcolor = pokemon.getHPColor();
+			hpcolor = BattleScene.getHPColor(pokemon);
 			let w = pokemon.hpWidth(150);
 			let $hp = this.$statbar.find('.hp');
 			$hp.css({
@@ -2539,6 +2583,8 @@ class PokemonSprite extends Sprite {
 			smackdown: '<span class="bad">Smack&nbsp;Down</span> ',
 			focusenergy: '<span class="good">Focus&nbsp;Energy</span> ',
 			slowstart: '<span class="bad">Slow&nbsp;Start</span> ',
+			noretreat: '<span class="bad">No&nbsp;Retreat</span> ',
+			octolock: '<span class="bad">Octolock</span> ',
 			doomdesire: '',
 			futuresight: '',
 			mimic: '<span class="good">Mimic</span> ',
@@ -2554,6 +2600,7 @@ class PokemonSprite extends Sprite {
 			wideguard: '<span class="good">Wide&nbsp;Guard</span>',
 			craftyshield: '<span class="good">Crafty&nbsp;Shield</span>',
 			matblock: '<span class="good">Mat&nbsp;Block</span>',
+			maxguard: '<span class="good">Max&nbsp;Guard</span>',
 			helpinghand: '<span class="good">Helping&nbsp;Hand</span>',
 			magiccoat: '<span class="good">Magic&nbsp;Coat</span>',
 			destinybond: '<span class="good">Destiny&nbsp;Bond</span>',
@@ -2827,6 +2874,16 @@ const BattleSound = new class {
 		this.effectVolume = this.loudnessPercentToAmplitudePercent(effectVolume);
 	}
 };
+if (typeof PS === 'object') {
+	PS.prefs.subscribeAndRun(key => {
+		if (!key || key === 'musicvolume' || key === 'effectvolume' || key === 'mute') {
+			BattleSound.effectVolume = PS.prefs.effectvolume;
+			BattleSound.bgmVolume = PS.prefs.musicvolume;
+			BattleSound.muted = PS.prefs.mute;
+			BattleBGM.update();
+		}
+	});
+}
 
 // */ //TPP: Comment out sound
 
@@ -2905,6 +2962,14 @@ const BattleEffects: {[k: string]: SpriteData} = {
 	caltrop: {
 		url: 'caltrop.png', // by Pokemon Showdown user SailorCosmos
 		w: 80, h: 80,
+	},
+	greenmetal1: {
+		url: 'greenmetal1.png', // by Pokemon Showdown user Kalalokki
+		w: 45, h: 45,
+	},
+	greenmetal2: {
+		url: 'greenmetal2.png', // by Pokemon Showdown user Kalalokki
+		w: 45, h: 45,
 	},
 	poisoncaltrop: {
 		url: 'poisoncaltrop.png', // by Pokemon Showdown user SailorCosmos

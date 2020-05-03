@@ -40,7 +40,7 @@ class PSSearchResults extends preact.Component<{search: BattleSearch}> {
 
 	renderPokemonRow(id: ID, matchStart: number, matchEnd: number, errorMessage?: preact.ComponentChildren) {
 		const search = this.props.search;
-		const pokemon = search.dex.getTemplate(id);
+		const pokemon = search.dex.getSpecies(id);
 		if (!pokemon) return <li class="result">Unrecognized pokemon</li>;
 
 		let tagStart = (pokemon.forme ? pokemon.name.length - pokemon.forme.length - 1 : 0);
@@ -55,7 +55,7 @@ class PSSearchResults extends preact.Component<{search: BattleSearch}> {
 				<span class="col numcol">{search.getTier(pokemon)}</span>
 
 				<span class="col iconcol">
-					<span style={Dex.getPokemonIcon(pokemon)}></span>
+					<span style={Dex.getPokemonIcon(pokemon.id)}></span>
 				</span>
 
 				<span class="col pokemonnamecol">{this.renderName(pokemon.name, matchStart, matchEnd, tagStart)}</span>
@@ -68,7 +68,7 @@ class PSSearchResults extends preact.Component<{search: BattleSearch}> {
 			<span class="col numcol">{search.getTier(pokemon)}</span>
 
 			<span class="col iconcol">
-				<span style={Dex.getPokemonIcon(pokemon)}></span>
+				<span style={Dex.getPokemonIcon(pokemon.id)}></span>
 			</span>
 
 			<span class="col pokemonnamecol">{this.renderName(pokemon.name, matchStart, matchEnd, tagStart)}</span>

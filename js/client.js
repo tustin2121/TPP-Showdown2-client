@@ -401,9 +401,12 @@ function toId() {
 			this.topbar = new Topbar({el: $('#header')});
 			if (this.down) {
 				this.isDisconnected = true;
-			} else if (location.origin === 'https://smogtours.psim.us') {
-				this.isDisconnected = true;
-				alert("The Smogtours server does not support HTTPS. Please use http://smogtours.psim.us");
+			// } else if (location.origin === 'http://smogtours.psim.us') {
+			// 	this.isDisconnected = true;
+			// 	this.addPopup(Popup, {
+			// 		message: "The Smogtours server no longer supports HTTP. Please use https://smogtours.psim.us",
+			// 		type: 'modal'
+			// 	});
 			} else {
 				if (document.location.hostname === 'play.pokemonshowdown.com' || Config.testclient) {
 					this.addRoom('rooms', null, true);
@@ -515,6 +518,7 @@ function toId() {
 				self.rooms[''].updateFormats();
 				$('.pm-log-add form').html('<small>You are disconnected and cannot chat.</small>');
 				$('.chat-log-add').html('<small>You are disconnected and cannot chat.</small>');
+				$('.battle-log-add').html('<small>You are disconnected and cannot chat.</small>');
 
 				self.reconnectPending = (message || true);
 				if (!self.popups.length) self.addPopup(ReconnectPopup, {message: message});
@@ -711,7 +715,7 @@ function toId() {
 
 			var self = this;
 			var constructSocket = function () {
-				var protocol = (Config.server.port === 443) ? 'https' : 'http';
+				var protocol = (Config.server.port === 443 || Config.server.https) ? 'https' : 'http';
 				Config.server.host = $.trim(Config.server.host);
 				return new SockJS(protocol + '://' + Config.server.host + ':' +
 					Config.server.port + Config.sockjsprefix, [], {timeout: 5 * 60 * 1000});
@@ -879,7 +883,9 @@ function toId() {
 						self.send('/join ' + roomid);
 					});
 				} else if (data === 'rename') {
-					this.renameRoom(roomid, errormessage);
+					// |newid|newtitle
+					var parts = errormessage.split('|');
+					this.renameRoom(roomid, parts[0], parts[1]);
 				} else if (data === 'nonexistent' && Config.server.id && roomid.slice(0, 7) === 'battle-' && errormessage) {
 					var replayid = roomid.slice(7);
 					if (Config.server.id !== 'showdown') replayid = Config.server.id + '-' + replayid;
@@ -1722,18 +1728,25 @@ function toId() {
 			if (room.requestLeave && !room.requestLeave(e)) return false;
 			return this.removeRoom(id);
 		},
-		renameRoom: function (id, newid) {
+		renameRoom: function (id, newid, newtitle) {
+			var newtitle = newtitle || newid;
 			var room = this.rooms[id];
 			if (!room) return false;
 			if (this.rooms[newid]) {
 				this.removeRoom(id, true);
 				return false;
 			}
-			this.rooms[newid] = room;
 			room.id = newid;
+			room.title = newtitle;
 			room.$el[0].id = 'room-' + newid;
+			this.rooms[newid] = room;
 			delete this.rooms[id];
 			this.updateLayout();
+			this.topbar.updateTabbar();
+			if (this.rooms[newid] === this.curRoom) {
+				this.updateTitle(this.rooms[newid]);
+			}
+			this.updateAutojoin();
 		},
 		removeRoom: function (id, alreadyLeft) {
 			var room = this.rooms[id];
@@ -2687,9 +2700,10 @@ function toId() {
 			this.callback = data.callback;
 
 			var buf = '<form>';
-			buf += '<p>Because of the <a href="https://en.wikipedia.org/wiki/Same-origin_policy" target="_blank">same-origin policy</a>, some manual work is required to complete the requested action when using <code>testclient.html</code>.</p>';
+			buf += '<p>Because of <a href="https://en.wikipedia.org/wiki/Same-origin_policy" target="_blank">your browser\'s security restrictions</a> for <code>testclient.html</code>, we need to do this manually:</p>';
 			buf += '<iframe id="overlay_iframe" src="' + data.uri + '" style="width: 100%; height: 50px;" class="textbox"></iframe>';
 			buf += '<p>Please copy <strong>all the text</strong> from the box above and paste it in the box below.</p>';
+			buf += '<p>(You should probably <a href="https://github.com/smogon/pokemon-showdown-client#test-keys" target="_blank">set up</a> <code>config/testclient-key.js</code> so you don\'t have to do this every time.)</p>';
 			buf += '<p><label class="label" style="float: left;">Data from the box above:</label> <input style="width: 100%;" class="textbox autofocus" type="text" name="result" /></p>';
 			buf += '<p class="buttonbar"><button type="submit"><strong>Submit</strong></button> <button name="close">Cancel</button></p>';
 			buf += '</form>';

@@ -9,6 +9,7 @@ class ChatRoom extends PSRoom {
 	readonly classType: 'chat' | 'battle' = 'chat';
 	users: {[userid: string]: string} = {};
 	userCount = 0;
+	readonly canConnect = true;
 
 	// PM-only properties
 	pmTarget: string | null = null;
@@ -77,22 +78,22 @@ class ChatRoom extends PSRoom {
 			return true;
 		} case 'reject': {
 			this.challengedFormat = null;
-			this.update('');
+			this.update(null);
 			return false;
 		}}
 		return false;
 	}
 	openChallenge() {
 		if (!this.pmTarget) {
-			this.receive(`|error|Can only be used in a PM.`);
+			this.receiveLine([`error`, `Can only be used in a PM.`]);
 			return;
 		}
 		this.challengeMenuOpen = true;
-		this.update('');
+		this.update(null);
 	}
 	cancelChallenge() {
 		if (!this.pmTarget) {
-			this.receive(`|error|Can only be used in a PM.`);
+			this.receiveLine([`error`, `Can only be used in a PM.`]);
 			return;
 		}
 		if (this.challengingFormat) {
@@ -102,19 +103,17 @@ class ChatRoom extends PSRoom {
 		} else {
 			this.challengeMenuOpen = false;
 		}
-		this.update('');
+		this.update(null);
 	}
 	send(line: string, direct?: boolean) {
 		this.updateTarget();
+		if (!direct && !line) return;
 		if (!direct && this.handleMessage(line)) return;
 		if (this.pmTarget) {
 			PS.send(`|/pm ${this.pmTarget}, ${line}`);
 			return;
 		}
-		super.send(line);
-	}
-	receive(line: string) {
-		this.update(line);
+		super.send(line, true);
 	}
 	setUsers(count: number, usernames: string[]) {
 		this.userCount = count;
@@ -123,13 +122,13 @@ class ChatRoom extends PSRoom {
 			const userid = toID(username);
 			this.users[userid] = username;
 		}
-		this.update('');
+		this.update(null);
 	}
 	addUser(username: string) {
 		const userid = toID(username);
 		if (!(userid in this.users)) this.userCount++;
 		this.users[userid] = username;
-		this.update('');
+		this.update(null);
 	}
 	removeUser(username: string, noUpdate?: boolean) {
 		const userid = toID(username);
@@ -137,12 +136,12 @@ class ChatRoom extends PSRoom {
 			this.userCount--;
 			delete this.users[userid];
 		}
-		if (!noUpdate) this.update('');
+		if (!noUpdate) this.update(null);
 	}
 	renameUser(username: string, oldUsername: string) {
 		this.removeUser(oldUsername, true);
 		this.addUser(username);
-		this.update('');
+		this.update(null);
 	}
 	destroy() {
 		if (this.pmTarget) this.connected = false;
@@ -347,7 +346,7 @@ class ChatPanel extends PSRoomPanel<ChatRoom> {
 		PS.send(`|/challenge ${room.pmTarget}, ${format}`);
 		room.challengeMenuOpen = false;
 		room.challengingFormat = format;
-		room.update('');
+		room.update(null);
 	};
 	acceptChallenge = (e: Event, format: string, team?: Team) => {
 		const room = this.props.room;
@@ -356,7 +355,7 @@ class ChatPanel extends PSRoomPanel<ChatRoom> {
 		PS.send(`|/utm ${packedTeam}`);
 		this.props.room.send(`/accept`);
 		room.challengedFormat = null;
-		room.update('');
+		room.update(null);
 	};
 	render() {
 		const room = this.props.room;
@@ -368,14 +367,14 @@ class ChatPanel extends PSRoomPanel<ChatRoom> {
 			</TeamForm>
 		</div> : room.challengeMenuOpen ? <div class="challenge">
 			<TeamForm onSubmit={this.makeChallenge}>
-				<button type="submit" class="button disabled"><strong>Challenge</strong></button> {}
+				<button type="submit" class="button"><strong>Challenge</strong></button> {}
 				<button name="cmd" value="/cancelchallenge" class="button">Cancel</button>
 			</TeamForm>
 		</div> : null;
 
 		const challengeFrom = room.challengedFormat ? <div class="challenge">
 			<TeamForm format={room.challengedFormat} onSubmit={this.acceptChallenge}>
-				<button type="submit" class="button disabled"><strong>Accept</strong></button> {}
+				<button type="submit" class="button"><strong>Accept</strong></button> {}
 				<button name="cmd" value="/reject" class="button">Reject</button>
 			</TeamForm>
 		</div> : null;
@@ -410,43 +409,35 @@ class ChatUserList extends preact.Component<{room: ChatRoom, left?: number, mini
 	render() {
 		const room = this.props.room;
 		let userList = Object.entries(room.users) as [ID, string][];
-		userList.sort(ChatUserList.compareUsers);
-		function colorStyle(userid: ID) {
-			return {color: BattleLog.usernameColor(userid)};
-		}
+		PSUtils.sortBy(userList, ([id, name]) => (
+			[name === '#Zarel', PS.server.getGroup(name.charAt(0)).order, !name.endsWith('@!'), id]
+		));
 		return <ul class={'userlist' + (this.props.minimized ? (this.state.expanded ? ' userlist-maximized' : ' userlist-minimized') : '')} style={{left: this.props.left || 0}}>
 			<li class="userlist-count" style="text-align:center;padding:2px 0" onClick={this.toggleExpanded}><small>{room.userCount} users</small></li>
 			{userList.map(([userid, name]) => {
 				const groupSymbol = name.charAt(0);
 				const group = PS.server.groups[groupSymbol] || {type: 'user', order: 0};
+				let color;
+				if (name.endsWith('@!')) {
+					name = name.slice(0, -2);
+					color = '#888888';
+				} else {
+					color = BattleLog.usernameColor(userid);
+				}
 				return <li key={userid}><button class="userbutton username" data-name={name}>
 					<em class={`group${['leadership', 'staff'].includes(group.type!) ? ' staffgroup' : ''}`}>
 						{groupSymbol}
 					</em>
 					{group.type === 'leadership' ?
-						<strong><em style={colorStyle(userid)}>{name.substr(1)}</em></strong>
+						<strong><em style={{color}}>{name.substr(1)}</em></strong>
 					: group.type === 'staff' ?
-						<strong style={colorStyle(userid)}>{name.substr(1)}</strong>
+						<strong style={{color}}>{name.substr(1)}</strong>
 					:
-						<span style={colorStyle(userid)}>{name.substr(1)}</span>
+						<span style={{color}}>{name.substr(1)}</span>
 					}
 				</button></li>;
 			})}
 		</ul>;
-	}
-	static compareUsers([userid1, name1]: [ID, string], [userid2, name2]: [ID, string]) {
-		if (userid1 === userid2) return 0;
-		let rank1 = (
-			PS.server.groups[name1.charAt(0)] || {order: 10006.5}
-		).order;
-		let rank2 = (
-			PS.server.groups[name2.charAt(0)] || {order: 10006.5}
-		).order;
-
-		if (userid1 === 'zarel' && rank1 === 10003) rank1 = 10000.5;
-		if (userid2 === 'zarel' && rank2 === 10003) rank2 = 10000.5;
-		if (rank1 !== rank2) return rank1 - rank2;
-		return (userid1 > userid2 ? 1 : -1);
 	}
 }
 
@@ -460,14 +451,9 @@ class ChatLog extends preact.Component<{
 		if (!this.props.noSubscription) {
 			this.log = new BattleLog(this.base! as HTMLDivElement);
 		}
-		this.subscription = this.props.room.subscribe(msg => {
-			if (!msg) return;
-			const tokens = BattleTextParser.parseLine(msg);
+		this.subscription = this.props.room.subscribe(tokens => {
+			if (!tokens) return;
 			switch (tokens[0]) {
-			case 'title':
-				this.props.room.title = tokens[1];
-				PS.update();
-				return;
 			case 'users':
 				const usernames = tokens[1].split(',');
 				const count = parseInt(usernames.shift()!, 10);

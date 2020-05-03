@@ -34,7 +34,7 @@ class BattleLog {
 			elem.setAttribute('role', 'log');
 			elem.innerHTML = '';
 			innerElem = document.createElement('div');
-			innerElem.className = 'inner';
+			innerElem.className = 'inner message-log';
 			elem.appendChild(innerElem);
 		}
 		this.innerElem = innerElem;
@@ -42,7 +42,7 @@ class BattleLog {
 		if (scene) {
 			this.scene = scene;
 			const preemptElem = document.createElement('div');
-			preemptElem.className = 'inner-preempt';
+			preemptElem.className = 'inner-preempt message-log';
 			elem.appendChild(preemptElem);
 			this.preemptElem = preemptElem;
 			this.battleParser = new BattleTextParser();
@@ -143,7 +143,8 @@ class BattleLog {
 			const user = toID(args[2]) || toID(args[1]);
 			this.unlinkChatFrom(user);
 			if (args[2]) {
-				this.hideChatFrom(user);
+				const lineCount = parseInt(args[3], 10);
+				this.hideChatFrom(user, true, lineCount);
 			}
 			return;
 		}
@@ -306,37 +307,38 @@ class BattleLog {
 			this.prependDiv('notice uhtml-' + id, BattleLog.sanitizeHTML(html));
 		}
 	}
-	hideChatFrom(userid: ID, showRevealButton = true) {
+	hideChatFrom(userid: ID, showRevealButton = true, lineCount = 0) {
 		const classStart = 'chat chatmessage-' + userid + ' ';
-		let lastNode;
-		let count = 0;
-		for (const node of this.innerElem.childNodes as any) {
+		let nodes: HTMLElement[] = [];
+		for (const node of this.innerElem.childNodes as any as HTMLElement[]) {
 			if (node.className && (node.className + ' ').startsWith(classStart)) {
-				node.style.display = 'none';
-				node.className = 'revealed ' + node.className;
-				count++;
+				nodes.push(node);
 			}
-			lastNode = node;
 		}
 		if (this.preemptElem) {
-			for (const node of this.preemptElem.childNodes as any) {
+			for (const node of this.preemptElem.childNodes as any as HTMLElement[]) {
 				if (node.className && (node.className + ' ').startsWith(classStart)) {
-					node.style.display = 'none';
-					node.className = 'revealed ' + node.className;
-					count++;
+					nodes.push(node);
 				}
-				lastNode = node;
 			}
 		}
-		if (!count || !showRevealButton) return;
+		if (lineCount) nodes = nodes.slice(-lineCount);
+
+		for (const node of nodes) {
+			node.style.display = 'none';
+			node.className = 'revealed ' + node.className;
+		}
+		if (!nodes.length || !showRevealButton) return;
 		const button = document.createElement('button');
 		button.name = 'toggleMessages';
 		button.value = userid;
 		button.className = 'subtle';
-		button.innerHTML = '<small>(' + count + ' line' + (count > 1 ? 's' : '') + ' from ' + userid + ' hidden)</small>';
+		button.innerHTML = `<small>(${nodes.length} line${nodes.length > 1 ? 's' : ''} from ${userid} hidden)</small>`;
+		const lastNode = nodes[nodes.length - 1];
 		lastNode.appendChild(document.createTextNode(' '));
 		lastNode.appendChild(button);
 	}
+
 	static unlinkNodeList(nodeList: ArrayLike<HTMLElement>, classStart: string) {
 		for (const node of nodeList as HTMLElement[]) {
 			if (node.className && (node.className + ' ').startsWith(classStart)) {
@@ -354,6 +356,7 @@ class BattleLog {
 			}
 		}
 	}
+
 	unlinkChatFrom(userid: ID) {
 		const classStart = 'chat chatmessage-' + userid + ' ';
 		const innerNodeList = this.innerElem.childNodes;
@@ -383,7 +386,8 @@ class BattleLog {
 	}
 
 	static escapeHTML(str: string, jsEscapeToo?: boolean) {
-		str = getString(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+		if (typeof str !== 'string') return '';
+		str = str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 		if (jsEscapeToo) str = str.replace(/\\/g, '\\\\').replace(/'/g, '\\\'');
 		return str;
 	}
@@ -766,8 +770,9 @@ class BattleLog {
 		return '<time>' + BattleLog.escapeHTML(formattedTime) + '</time>';
 	}
 	static sanitizeHTML(input: string) {
+		if (typeof input !== 'string') return '';
 		this.initSanitizeHTML();
-		const sanitized = html.sanitizeWithPolicy(getString(input), this.tagPolicy) as string;
+		const sanitized = html.sanitizeWithPolicy(input, this.tagPolicy) as string;
 		// <time> parsing requires ISO 8601 time. While more time formats are
 		// supported by most JavaScript implementations, it isn't required, and
 		// how to exactly enforce ignoring user agent timezone setting is not obvious.

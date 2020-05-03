@@ -127,11 +127,6 @@ if (window.soundManager) {
 // @ts-ignore
 window.nodewebkit = !!(typeof process !== 'undefined' && process.versions && process.versions['node-webkit']);
 
-function getString(str: any) {
-	if (typeof str === 'string' || typeof str === 'number') return '' + str;
-	return '';
-}
-
 function toID(text: any) {
 	if (text?.id) {
 		text = text.id;
@@ -146,31 +141,84 @@ function toUserid(text: any) {
 	return toID(text);
 }
 
-/**
- * Like string.split(delimiter), but only recognizes the first `limit`
- * delimiters (default 1).
- *
- * `"1 2 3 4".split(" ", 2) => ["1", "2"]`
- *
- * `splitFirst("1 2 3 4", " ", 1) => ["1", "2 3 4"]`
- *
- * Returns an array of length exactly limit + 1.
- */
-function splitFirst(str: string, delimiter: string, limit: number = 1) {
-	let splitStr: string[] = [];
-	while (splitStr.length < limit) {
-		let delimiterIndex = str.indexOf(delimiter);
-		if (delimiterIndex >= 0) {
-			splitStr.push(str.slice(0, delimiterIndex));
-			str = str.slice(delimiterIndex + delimiter.length);
-		} else {
-			splitStr.push(str);
-			str = '';
+type Comparable = number | string | boolean | Comparable[] | {reverse: Comparable};
+const PSUtils = new class {
+	/**
+	 * Like string.split(delimiter), but only recognizes the first `limit`
+	 * delimiters (default 1).
+	 *
+	 * `"1 2 3 4".split(" ", 2) => ["1", "2"]`
+	 *
+	 * `splitFirst("1 2 3 4", " ", 1) => ["1", "2 3 4"]`
+	 *
+	 * Returns an array of length exactly limit + 1.
+	 */
+	splitFirst(str: string, delimiter: string, limit: number = 1) {
+		let splitStr: string[] = [];
+		while (splitStr.length < limit) {
+			let delimiterIndex = str.indexOf(delimiter);
+			if (delimiterIndex >= 0) {
+				splitStr.push(str.slice(0, delimiterIndex));
+				str = str.slice(delimiterIndex + delimiter.length);
+			} else {
+				splitStr.push(str);
+				str = '';
+			}
 		}
+		splitStr.push(str);
+		return splitStr;
 	}
-	splitStr.push(str);
-	return splitStr;
-}
+
+	/**
+	 * Compares two variables; intended to be used as a smarter comparator.
+	 * The two variables must be the same type (TypeScript will not check this).
+	 *
+	 * - Numbers are sorted low-to-high, use `-val` to reverse
+	 * - Strings are sorted A to Z case-semi-insensitively, use `{reverse: val}` to reverse
+	 * - Booleans are sorted true-first (REVERSE of casting to numbers), use `!val` to reverse
+	 * - Arrays are sorted lexically in the order of their elements
+	 *
+	 * In other words: `[num, str]` will be sorted A to Z, `[num, {reverse: str}]` will be sorted Z to A.
+	 */
+	compare(a: Comparable, b: Comparable): number {
+		if (typeof a === 'number') {
+			return a - (b as number);
+		}
+		if (typeof a === 'string') {
+			return a.localeCompare(b as string);
+		}
+		if (typeof a === 'boolean') {
+			return (a ? 1 : 2) - (b ? 1 : 2);
+		}
+		if (Array.isArray(a)) {
+			for (let i = 0; i < a.length; i++) {
+				const comparison = PSUtils.compare(a[i], (b as Comparable[])[i]);
+				if (comparison) return comparison;
+			}
+			return 0;
+		}
+		if (a.reverse) {
+			return PSUtils.compare((b as {reverse: string}).reverse, a.reverse);
+		}
+		throw new Error(`Passed value ${a} is not comparable`);
+	}
+	/**
+	 * Sorts an array according to the callback's output on its elements.
+	 *
+	 * The callback's output is compared according to `PSUtils.compare` (in
+	 * particular, it supports arrays so you can sort by multiple things).
+	 */
+	sortBy<T>(array: T[], callback: (a: T) => Comparable): T[];
+	/**
+	 * Sorts an array according to `PSUtils.compare`. (Correctly sorts numbers,
+	 * unlike `array.sort`)
+	 */
+	sortBy<T extends Comparable>(array: T[]): T[];
+	sortBy<T>(array: T[], callback?: (a: T) => Comparable) {
+		if (!callback) return (array as any[]).sort(PSUtils.compare);
+		return array.sort((a, b) => PSUtils.compare(callback(a), callback(b)));
+	}
+};
 
 /**
  * Sanitize a room ID by removing anything that isn't alphanumeric or `-`.
@@ -205,6 +253,14 @@ interface SpriteData {
 	pixelated?: boolean;
 	isBackSprite?: boolean;
 	cryurl?: string;
+	shiny?: boolean;
+}
+
+interface TeambuilderSpriteData {
+	x: number;
+	y: number;
+	spriteDir: string;
+	spriteid: string;
 	shiny?: boolean;
 }
 
@@ -396,79 +452,91 @@ const Dex = new class implements ModdedDex {
 		return ability;
 	}
 
-	getTemplate(nameOrTemplate: string | Template | null | undefined): Template {
-		if (nameOrTemplate && typeof nameOrTemplate !== 'string') {
-			// TODO: don't accept Templates here
-			return nameOrTemplate;
+	getSpecies(nameOrSpecies: string | Species | null | undefined): Species {
+		if (nameOrSpecies && typeof nameOrSpecies !== 'string') {
+			// TODO: don't accept Species' here
+			return nameOrSpecies;
 		}
-		let name = nameOrTemplate || '';
-		let id = toID(nameOrTemplate);
+		let name = nameOrSpecies || '';
+		let id = toID(nameOrSpecies);
 		let formid = id;
 		if (!window.BattlePokedexAltForms) window.BattlePokedexAltForms = {};
 		if (formid in window.BattlePokedexAltForms) return window.BattlePokedexAltForms[formid];
 		if (window.BattleAliases && id in BattleAliases) {
 			name = BattleAliases[id];
 			id = toID(name);
+		} else if (window.BattlePokedex && !(id in BattlePokedex) && window.BattleBaseSpeciesChart) {
+			for (const baseSpeciesId of BattleBaseSpeciesChart) {
+				if (formid.startsWith(baseSpeciesId)) {
+					id = baseSpeciesId;
+					break;
+				}
+			}
 		}
 		if (!window.BattlePokedex) window.BattlePokedex = {};
 		let data = window.BattlePokedex[id];
 
-		let template: Template;
+		let species: Species;
 		if (data && typeof data.exists === 'boolean') {
-			template = data;
+			species = data;
 		} else {
 			if (!data) data = {exists: false};
 			if (!data.tier && id.slice(-5) === 'totem') {
-				data.tier = this.getTemplate(id.slice(0, -5)).tier;
+				data.tier = this.getSpecies(id.slice(0, -5)).tier;
 			}
 			if (!data.tier && data.baseSpecies && toID(data.baseSpecies) !== id) {
-				data.tier = this.getTemplate(data.baseSpecies).tier;
+				data.tier = this.getSpecies(data.baseSpecies).tier;
 			}
-			template = new Template(id, name, data);
-			window.BattlePokedex[id] = template;
+			species = new Species(id, name, data);
+			window.BattlePokedex[id] = species;
 		}
 
-		if (formid === id || !template.otherForms || !template.otherForms.includes(formid)) {
-			return template;
+		if (species.cosmeticFormes) {
+			for (const forme of species.cosmeticFormes) {
+				if (toID(forme) === formid) {
+					species = new Species(formid, name, {
+						...species,
+						name: forme,
+						forme: forme.slice(species.name.length + 1),
+						baseForme: "",
+						baseSpecies: species.name,
+						otherFormes: null,
+						cosmeticFormes: null,
+					});
+					window.BattlePokedexAltForms[formid] = species;
+					break;
+				}
+			}
 		}
-		let forme = formid.slice(id.length);
-		forme = forme[0].toUpperCase() + forme.slice(1);
-		name = template.baseSpecies + (forme ? '-' + forme : '');
 
-		template = window.BattlePokedexAltForms[formid] = new Template(formid, name, {
-			...template,
-			name,
-			forme,
-		});
-		return template;
+		return species;
 	}
 
 	/** @deprecated */
-	getTier(pokemon: Template, gen = 7, isDoubles = false): string {
-		if (gen < 8) pokemon = this.forGen(gen).getTemplate(pokemon.id);
-		if (!isDoubles) return pokemon.tier;
+	getTier(pokemon: string, genNum = 8, mod?: string): string {
+		let species = this.getSpecies(pokemon);
+		if (genNum < 8) species = this.forGen(genNum).getSpecies(pokemon);
 		let table = window.BattleTeambuilderTable;
-		if (table && table[`gen${this.gen}doubles`]) {
-			table = table[`gen${this.gen}doubles`];
+		if (!table) return species.tier;
+		if (mod === 'doubles') {
+			table = table[`gen${genNum}doubles`];
+		} else if (genNum < 8) {
+			table = table[`gen${genNum}`];
+		} else if (mod && table[toID(mod)]) {
+			table = table[toID(mod)];
 		}
-		if (!table) return pokemon.tier;
 
-		let id = pokemon.id;
+		if (!table.overrideTier) return species.tier;
+
+		let id = species.id;
 		if (id in table.overrideTier) {
 			return table.overrideTier[id];
 		}
-		if (id.slice(-5) === 'totem' && id.slice(0, -5) in table.overrideTier) {
-			return table.overrideTier[id.slice(0, -5)];
-		}
-		id = toID(pokemon.baseSpecies);
-		if (id in table.overrideTier) {
-			return table.overrideTier[id];
-		}
 
-		return pokemon.tier;
+		return species.tier;
 	}
 
-	getType(type: any): Effect {
+	getType(type: any): Effect & {damageTaken?: AnyObject, HPivs?: Partial<StatsTable>, HPdvs: Partial<StatsTable>} {
 		if (!type || typeof type === 'string') {
 			let id = toID(type) as string;
 			id = id.substr(0, 1).toUpperCase() + id.substr(1);
@@ -483,10 +551,10 @@ const Dex = new class implements ModdedDex {
 		return type;
 	}
 
-	hasAbility(template: Template, ability: string) {
-		for (const i in template.abilities) {
+	hasAbility(species: Species, ability: string) {
+		for (const i in species.abilities) {
 			// @ts-ignore
-			if (ability === template.abilities[i]) return true;
+			if (ability === species.abilities[i]) return true;
 		}
 		return false;
 	}
@@ -503,11 +571,17 @@ const Dex = new class implements ModdedDex {
 		el.src = path + 'data/pokedex-mini-bw.js' + qs;
 		document.getElementsByTagName('body')[0].appendChild(el);
 	}
-	getSpriteData(pokemon: Pokemon | Template | string, siden: number, options: {
-		gen?: number, shiny?: boolean, gender?: GenderName, afd?: boolean, noScale?: boolean, mod?: string,
+	getSpriteData(pokemon: Pokemon | Species | string, siden: number, options: {
+		gen?: number,
+		shiny?: boolean,
+		gender?: GenderName,
+		afd?: boolean,
+		noScale?: boolean,
+		mod?: string,
+		dynamax?: boolean,
 	} = {gen: 6}) {
 		const mechanicsGen = options.gen || 6;
-		let isDynamax = false;
+		let isDynamax = !!options.dynamax;
 		if (pokemon instanceof Pokemon) {
 			if (pokemon.volatiles.transform) {
 				options.shiny = pokemon.volatiles.transform[2];
@@ -517,9 +591,9 @@ const Dex = new class implements ModdedDex {
 				options.gender = pokemon.gender;
 			}
 			if (pokemon.volatiles.dynamax) isDynamax = true;
-			pokemon = pokemon.getSpecies();
+			pokemon = pokemon.getSpeciesForme();
 		}
-		const template = Dex.getTemplate(pokemon);
+		const species = Dex.getSpecies(pokemon);
 		let spriteData = {
 			gen: mechanicsGen,
 			w: 96,
@@ -531,7 +605,7 @@ const Dex = new class implements ModdedDex {
 			cryurl: '',
 			shiny: options.shiny,
 		};
-		let name = template.spriteid;
+		let name = species.spriteid;
 		let dir;
 		let facing;
 		if (siden) {
@@ -557,13 +631,13 @@ const Dex = new class implements ModdedDex {
 		let graphicsGen = mechanicsGen;
 		if (Dex.prefs('nopastgens')) graphicsGen = 6;
 		if (Dex.prefs('bwgfx') && graphicsGen >= 6) graphicsGen = 5;
-		spriteData.gen = Math.max(graphicsGen, Math.min(template.gen, 5));
+		spriteData.gen = Math.max(graphicsGen, Math.min(species.gen, 5));
 		const baseDir = ['', 'gen1', 'gen2', 'gen3', 'gen4', 'gen5', '', '', ''][spriteData.gen];
 
 		let animationData = null;
 		let miscData = null;
-		let speciesid = template.speciesid;
-		if (template.isTotem) speciesid = toID(name);
+		let speciesid = species.id;
+		if (species.isTotem) speciesid = toID(name);
 		if (baseDir === '' && window.BattlePokemonSprites) {
 			animationData = BattlePokemonSprites[speciesid];
 		}
@@ -576,10 +650,10 @@ const Dex = new class implements ModdedDex {
 		if (!miscData) miscData = {};
 
 		if (miscData.num > 0) {
-			let baseSpeciesid = toID(template.baseSpecies);
+			let baseSpeciesid = toID(species.baseSpecies);
 			spriteData.cryurl = 'audio/cries/' + baseSpeciesid;
-			let formeid = template.formeid;
-			if (template.isMega || formeid && (
+			let formeid = species.formeid;
+			if (species.isMega || formeid && (
 				formeid === '-sky' ||
 				formeid === '-therian' ||
 				formeid === '-primal' ||
@@ -604,12 +678,23 @@ const Dex = new class implements ModdedDex {
 		if (window.Config && Config.server && Config.server.afd || options.afd) {
 			dir = 'afd' + dir;
 			spriteData.url += dir + '/' + name + '.png';
+			// Duplicate code but needed to make AFD tinymax work
+			// April Fool's 2020
+			if (isDynamax && !options.noScale) {
+				spriteData.w *= 0.25;
+				spriteData.h *= 0.25;
+				spriteData.y += -22;
+			} else if (species.isTotem && !options.noScale) {
+				spriteData.w *= 0.5;
+				spriteData.h *= 0.5;
+				spriteData.y += -11;
+			}
 			return spriteData;
 		}
 
 		// Mod Cries
 		if (options.mod) {
-			spriteData.cryurl = `sprites/${options.mod}/audio/${toID(template.baseSpecies)}`;
+			spriteData.cryurl = `sprites/${options.mod}/audio/${toID(species.baseSpecies)}`;
 			spriteData.cryurl += (window.nodewebkit ? '.ogg' : '.mp3');
 		}
 
@@ -656,7 +741,7 @@ const Dex = new class implements ModdedDex {
 			spriteData.w *= 2;
 			spriteData.h *= 2;
 			spriteData.y += -22;
-		} else if ((template.isTotem || isDynamax) && !options.noScale) {
+		} else if ((species.isTotem || isDynamax) && !options.noScale) {
 			spriteData.w *= 1.5;
 			spriteData.h *= 1.5;
 			spriteData.y += -11;
@@ -692,7 +777,7 @@ const Dex = new class implements ModdedDex {
 		return num;
 	}
 
-	getPokemonIcon(pokemon: any, facingLeft?: boolean) {
+	getPokemonIcon(pokemon: string | Pokemon | ServerPokemon | PokemonSet | null, facingLeft?: boolean) {
 		if (pokemon === 'pokeball') {
 			return `background:transparent url(${Dex.resourcePrefix}sprites/pokemonicons-pokeball-sheet.png) no-repeat scroll -0px 4px`;
 		} else if (pokemon === 'pokeball-statused') {
@@ -704,61 +789,75 @@ const Dex = new class implements ModdedDex {
 		}
 
 		let id = toID(pokemon);
+		if (!pokemon || typeof pokemon === 'string') pokemon = null;
+		// @ts-ignore
+		if (pokemon?.speciesForme) id = toID(pokemon.speciesForme);
+		// @ts-ignore
 		if (pokemon?.species) id = toID(pokemon.species);
+		// @ts-ignore
 		if (pokemon?.volatiles?.formechange && !pokemon.volatiles.transform) {
+			// @ts-ignore
 			id = toID(pokemon.volatiles.formechange[1]);
 		}
 		let num = this.getPokemonIconNum(id, pokemon?.gender === 'F', facingLeft);
 
 		let top = Math.floor(num / 12) * 30;
 		let left = (num % 12) * 40;
-		let fainted = (pokemon?.fainted ? `;opacity:.3;filter:grayscale(100%) brightness(.5)` : ``);
+		let fainted = ((pokemon as Pokemon | ServerPokemon)?.fainted ? `;opacity:.3;filter:grayscale(100%) brightness(.5)` : ``);
 		return `background:transparent url(${Dex.resourcePrefix}sprites/pokemonicons-sheet.png?g8) no-repeat scroll -${left}px -${top}px${fainted}`;
+	}
+
+	getTeambuilderSpriteData(pokemon: any, gen: number = 0): TeambuilderSpriteData {
+		let id = toID(pokemon.species);
+		let spriteid = pokemon.spriteid;
+		let species = Dex.getSpecies(pokemon.species);
+		if (pokemon.species && !spriteid) {
+			spriteid = species.spriteid || toID(pokemon.species);
+		}
+		if (species.exists === false) return { spriteDir: 'sprites/gen5', spriteid: '0', x: 10, y: 5 };
+		const spriteData: TeambuilderSpriteData = {
+			spriteid,
+			spriteDir: 'sprites/dex',
+			x: -2,
+			y: -3,
+		};
+		if (pokemon.shiny) spriteData.shiny = true;
+		if (Dex.prefs('nopastgens')) gen = 6;
+		let xydexExists = (!species.isNonstandard || species.isNonstandard === 'Past') || [
+			"pikachustarter", "eeveestarter", "meltan", "melmetal", "fidgit", "stratagem", "tomohawk", "mollux", "crucibelle", "crucibellemega", "kerfluffle", "pajantom", "jumbao", "caribolt", "smokomodo", "snaelstrom", "equilibra", "scratchet", "pluffle", "smogecko", "pokestarufo", "pokestarufo2", "pokestarbrycenman", "pokestarmt", "pokestarmt2", "pokestargiant", "pokestarhumanoid", "pokestarmonster", "pokestarf00", "pokestarf002", "pokestarspirit",
+		].includes(species.id);
+		if (species.gen === 8) xydexExists = false;
+		if ((!gen || gen >= 6) && xydexExists) {
+			if (species.gen >= 7) {
+				spriteData.x = -6;
+				spriteData.y = -7;
+			} else if (id.substr(0, 6) === 'arceus') {
+				spriteData.x = -2;
+				spriteData.y = 7;
+			} else if (id === 'garchomp') {
+				spriteData.x = -2;
+				spriteData.y = 2;
+			} else if (id === 'garchompmega') {
+				spriteData.x = -2;
+				spriteData.y = 0;
+			}
+			return spriteData;
+		}
+		spriteData.spriteDir = 'sprites/gen5';
+		if (gen <= 1 && species.gen <= 1) spriteData.spriteDir = 'sprites/gen1';
+		else if (gen <= 2 && species.gen <= 2) spriteData.spriteDir = 'sprites/gen2';
+		else if (gen <= 3 && species.gen <= 3) spriteData.spriteDir = 'sprites/gen3';
+		else if (gen <= 4 && species.gen <= 4) spriteData.spriteDir = 'sprites/gen4';
+		spriteData.x = 10;
+		spriteData.y = 5;
+		return spriteData;
 	}
 
 	getTeambuilderSprite(pokemon: any, gen: number = 0) {
 		if (!pokemon) return '';
-		let id = toID(pokemon.species);
-		let spriteid = pokemon.spriteid;
-		let template = Dex.getTemplate(pokemon.species);
-		if (pokemon.species && !spriteid) {
-			spriteid = template.spriteid || toID(pokemon.species);
-		}
-		if (template.exists === false) {
-			return 'background-image:url(' + Dex.resourcePrefix + 'sprites/gen5/0.png);background-position:10px 5px;background-repeat:no-repeat';
-		}
-		let shiny = (pokemon.shiny ? '-shiny' : '');
-		// let sdata;
-		// if (BattlePokemonSprites[id]?.front && !Dex.prefs('bwgfx')) {
-		// 	if (BattlePokemonSprites[id].front.anif && pokemon.gender === 'F') {
-		// 		spriteid += '-f';
-		// 		sdata = BattlePokemonSprites[id].front.anif;
-		// 	} else {
-		// 		sdata = BattlePokemonSprites[id].front.ani;
-		// 	}
-		// } else {
-		// 	return 'background-image:url(' + Dex.resourcePrefix + 'sprites/gen5' + shiny + '/' + spriteid + '.png);background-position:10px 5px;background-repeat:no-repeat';
-		// }
-		if (Dex.prefs('nopastgens')) gen = 6;
-		let spriteDir = Dex.resourcePrefix + 'sprites/dex';
-		let xydexExists = (!template.isNonstandard || template.isNonstandard === 'Past') || [
-			"pikachustarter", "eeveestarter", "meltan", "melmetal", "fidgit", "stratagem", "tomohawk", "mollux", "crucibelle", "crucibellemega", "kerfluffle", "pajantom", "jumbao", "caribolt", "smokomodo", "snaelstrom", "equilibra", "scratchet", "pluffle", "smogecko", "pokestarufo", "pokestarufo2", "pokestarbrycenman", "pokestarmt", "pokestarmt2", "pokestargiant", "pokestarhumanoid", "pokestarmonster", "pokestarf00", "pokestarf002", "pokestarspirit",
-		].includes(template.id);
-		if (template.gen === 8) xydexExists = false;
-		if ((!gen || gen >= 6) && xydexExists && !Dex.prefs('bwgfx')) {
-			let offset = '-2px -3px';
-			if (template.gen >= 7) offset = '-6px -7px';
-			if (id.substr(0, 6) === 'arceus') offset = '-2px 7px';
-			if (id === 'garchomp') offset = '-2px 2px';
-			if (id === 'garchompmega') offset = '-2px 0px';
-			return 'background-image:url(' + spriteDir + shiny + '/' + spriteid + '.png);background-position:' + offset + ';background-repeat:no-repeat';
-		}
-		spriteDir = Dex.resourcePrefix + 'sprites/gen5';
-		if (gen <= 1 && template.gen <= 1) spriteDir = Dex.resourcePrefix + 'sprites/gen1';
-		else if (gen <= 2 && template.gen <= 2) spriteDir = Dex.resourcePrefix + 'sprites/gen2';
-		else if (gen <= 3 && template.gen <= 3) spriteDir = Dex.resourcePrefix + 'sprites/gen3';
-		else if (gen <= 4 && template.gen <= 4) spriteDir = Dex.resourcePrefix + 'sprites/gen4';
-		return 'background-image:url(' + spriteDir + shiny + '/' + spriteid + '.png);background-position:10px 5px;background-repeat:no-repeat';
+		const data = this.getTeambuilderSpriteData(pokemon, gen);
+		const shiny = (data.shiny ? '-shiny' : '');
+		return 'background-image:url(' + Dex.resourcePrefix + data.spriteDir + shiny + '/' + data.spriteid + '.png);background-position:' + data.x + 'px ' + data.y + 'px;background-repeat:no-repeat';
 	}
 
 	getItemIcon(item: any) {
@@ -796,7 +895,8 @@ class ModdedDex {
 		Moves: {} as any as {[k: string]: Move},
 		Items: {} as any as {[k: string]: Item},
 		Abilities: {} as any as {[k: string]: Ability},
-		Templates: {} as any as {[k: string]: Template},
+		Species: {} as any as {[k: string]: Species},
+		Types: {} as any as {[k: string]: Effect},
 	};
 	pokeballs: string[] | null = null;
 	constructor(modid: ID) {
@@ -876,15 +976,15 @@ class ModdedDex {
 		this.cache.Abilities[id] = ability;
 		return ability;
 	}
-	getTemplate(name: string): Template {
+	getSpecies(name: string): Species {
 		let id = toID(name);
 		if (window.BattleAliases && id in BattleAliases) {
 			name = BattleAliases[id];
 			id = toID(name);
 		}
-		if (this.cache.Templates.hasOwnProperty(id)) return this.cache.Templates[id];
+		if (this.cache.Species.hasOwnProperty(id)) return this.cache.Species[id];
 
-		let data = {...Dex.getTemplate(name)};
+		let data = {...Dex.getSpecies(name)};
 
 		const table = window.BattleTeambuilderTable[this.modid];
 		if (this.gen < 3) {
@@ -912,18 +1012,39 @@ class ModdedDex {
 
 		if (id in table.overrideTier) data.tier = table.overrideTier[id];
 		if (!data.tier && id.slice(-5) === 'totem') {
-			data.tier = this.getTemplate(id.slice(0, -5)).tier;
+			data.tier = this.getSpecies(id.slice(0, -5)).tier;
 		}
 		if (!data.tier && data.baseSpecies && toID(data.baseSpecies) !== id) {
-			data.tier = this.getTemplate(data.baseSpecies).tier;
+			data.tier = this.getSpecies(data.baseSpecies).tier;
 		}
 		if (data.gen > this.gen) data.tier = 'Illegal';
 
-		const template = new Template(id, name, data);
-		this.cache.Templates[id] = template;
-		return template;
+		const species = new Species(id, name, data);
+		this.cache.Species[id] = species;
+		return species;
 	}
+	getType(name: string): Effect {
+		let id = toID(name) as string;
+		id = id.substr(0, 1).toUpperCase() + id.substr(1);
 
+		if (this.cache.Types.hasOwnProperty(id)) return this.cache.Types[id];
+
+		let data = {...Dex.getType(name)};
+
+		for (let i = 7; i >= this.gen; i--) {
+			if (id in window.BattleTeambuilderTable['gen' + i].removeType) {
+				data.exists = false;
+				// don't bother correcting its attributes given it doesn't exist
+				break;
+			}
+			if (id in window.BattleTeambuilderTable['gen' + i].overrideTypeChart) {
+				data = {...data, ...window.BattleTeambuilderTable['gen' + i].overrideTypeChart[id]};
+			}
+		}
+
+		this.cache.Types[id] = data;
+		return data;
+	}
 	getPokeballs() {
 		if (this.pokeballs) return this.pokeballs;
 		this.pokeballs = [];

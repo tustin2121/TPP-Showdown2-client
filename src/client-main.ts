@@ -24,8 +24,10 @@ const PSPrefsDefaults: {[key: string]: any} = {};
  * Tracks user preferences, stored in localStorage. Contains most local
  * data, with the exception of backgrounds, teams, and session data,
  * which get their own models.
+ *
+ * Updates will name the key updated, so you don't need to overreact.
  */
-class PSPrefs extends PSModel {
+class PSPrefs extends PSStreamModel<string | null> {
 	/**
 	 * Dark mode!
 	 */
@@ -49,6 +51,11 @@ class PSPrefs extends PSModel {
 	 * true = one panel, false = two panels, left and right
 	 */
 	onepanel = false;
+
+	mute = false;
+	effectvolume = 50;
+	musicvolume = 50;
+	notifvolume = 50;
 
 	storageEngine: 'localStorage' | 'iframeLocalStorage' | '' = '';
 	storage: {[k: string]: any} = {};
@@ -74,7 +81,7 @@ class PSPrefs extends PSModel {
 	/**
 	 * Change a preference.
 	 */
-	set(key: string, value: any) {
+	set<T extends keyof PSPrefs>(key: T, value: PSPrefs[T]) {
 		if (value === null) {
 			delete this.storage[key];
 			(this as any)[key] = PSPrefsDefaults[key];
@@ -82,14 +89,14 @@ class PSPrefs extends PSModel {
 			this.storage[key] = value;
 			(this as any)[key] = value;
 		}
-		this.update();
+		this.update(key);
 		this.save();
 	}
 	load(newPrefs: object, noSave?: boolean) {
 		this.fixPrefs(newPrefs);
 		Object.assign(this, PSPrefsDefaults);
 		this.storage = newPrefs;
-		this.update();
+		this.update(null);
 		if (!noSave) this.save();
 	}
 	save() {
@@ -147,6 +154,7 @@ class PSTeams extends PSStreamModel<'team' | 'format'> {
 	usesLocalLadder = false;
 	list: Team[] = [];
 	byKey: {[key: string]: Team | undefined} = {};
+	deletedTeams: [Team, number][] = [];
 	constructor() {
 		super();
 		try {
@@ -161,19 +169,15 @@ class PSTeams extends PSStreamModel<'team' | 'format'> {
 		const formatEntry = BattleFormats[formatid];
 		return formatEntry?.teambuilderFormat || formatid;
 	}
-	getKey(team: Team | null) {
-		if (!team) return '';
-		if (team.key) return team.key;
-		let key = Math.random().toString().substr(2, 1);
-		for (let i = 2; key in this.byKey; i++) {
-			key = Math.random().toString().substr(2, i);
+	getKey(name: string) {
+		const baseKey: string = toID(name) || '0';
+		let key = baseKey;
+		let i = 1;
+		while (key in this.byKey) {
+			i++;
+			key = `${baseKey}-${i}`;
 		}
-		team.key = key;
-		this.byKey[key] = team;
 		return key;
-	}
-	save() {
-		// noop by default
 	}
 	unpackAll(buffer: string | null) {
 		if (!buffer) {
@@ -189,14 +193,49 @@ class PSTeams extends PSStreamModel<'team' | 'format'> {
 		this.list = [];
 		for (const line of buffer.split('\n')) {
 			const team = this.unpackLine(line);
-			if (team) this.list.push(team);
+			if (team) this.push(team);
 		}
 		this.update('team');
+	}
+	push(team: Team) {
+		team.key = this.getKey(team.name);
+		this.list.push(team);
+		this.byKey[team.key] = team;
+	}
+	unshift(team: Team) {
+		team.key = this.getKey(team.name);
+		this.list.unshift(team);
+		this.byKey[team.key] = team;
+	}
+	delete(team: Team) {
+		const teamIndex = this.list.indexOf(team);
+		if (teamIndex < 0) return false;
+		this.deletedTeams.push([team, teamIndex]);
+		this.list.splice(teamIndex, 1);
+		delete this.byKey[team.key];
+	}
+	undelete() {
+		if (!this.deletedTeams.length) return;
+		const [team, teamIndex] = this.deletedTeams.pop()!;
+		this.list.splice(teamIndex, 0, team);
+		if (this.byKey[team.key]) team.key = this.getKey(team.name);
+		this.byKey[team.key] = team;
 	}
 	unpackOldBuffer(buffer: string) {
 		alert("Your team storage format is too old for PS. You'll need to upgrade it at https://play.pokemonshowdown.com/recoverteams.html");
 		this.list = [];
 		return;
+	}
+	packAll(teams: Team[]) {
+		return teams.map(team => (
+			(team.format ? `${team.format}]` : ``) + (team.folder ? `${team.folder}/` : ``) + team.name + `|` + team.packedTeam
+		)).join('\n');
+	}
+	save() {
+		try {
+			localStorage.setItem('showdown_teams', this.packAll(this.list));
+		} catch {}
+		this.update('team');
 	}
 	unpackLine(line: string): Team | null {
 		let pipeIndex = line.indexOf('|');
@@ -207,12 +246,13 @@ class PSTeams extends PSStreamModel<'team' | 'format'> {
 		if (slashIndex < 0) slashIndex = bracketIndex; // line.slice(slashIndex + 1, pipeIndex) will be ''
 		let format = bracketIndex > 0 ? line.slice(0, bracketIndex) : 'gen7';
 		if (format.slice(0, 3) !== 'gen') format = 'gen6' + format;
+		const name = line.slice(slashIndex + 1, pipeIndex);
 		return {
-			name: line.slice(slashIndex + 1, pipeIndex),
+			name,
 			format: format as ID,
-			packedTeam: line.slice(pipeIndex + 1),
 			folder: line.slice(bracketIndex + 1, slashIndex > 0 ? slashIndex : bracketIndex + 1),
-			iconCache: '',
+			packedTeam: line.slice(pipeIndex + 1),
+			iconCache: null,
 			key: '',
 		};
 	}
@@ -259,7 +299,7 @@ interface PSGroup {
 
 class PSServer {
 	id = 'showdown';
-	host = 'sim2.psim.us';
+	host = 'sim3.psim.us';
 	port = 8000;
 	altport = 80;
 	registered = true;
@@ -269,66 +309,67 @@ class PSServer {
 		'~': {
 			name: "Administrator (~)",
 			type: 'leadership',
-			order: 10001,
+			order: 101,
 		},
 		'&': {
 			name: "Leader (&)",
 			type: 'leadership',
-			order: 10002,
+			order: 102,
 		},
 		'#': {
 			name: "Room Owner (#)",
 			type: 'leadership',
-			order: 10003,
+			order: 103,
 		},
 		'\u2605': {
 			name: "Host (\u2605)",
 			type: 'staff',
-			order: 10004,
+			order: 104,
 		},
 		'@': {
 			name: "Moderator (@)",
 			type: 'staff',
-			order: 10005,
+			order: 105,
 		},
 		'%': {
 			name: "Driver (%)",
 			type: 'staff',
-			order: 10006,
+			order: 106,
 		},
+		// by default, unrecognized ranks go here, between driver and bot
 		'*': {
 			name: "Bot (*)",
-			order: 10007,
+			order: 108,
 		},
 		'\u2606': {
 			name: "Player (\u2606)",
-			order: 10008,
+			order: 109,
 		},
 		'+': {
 			name: "Voice (+)",
-			order: 10009,
+			order: 200,
 		},
 		' ': {
-			order: 10010,
+			order: 201,
 		},
 		'!': {
 			name: "Muted (!)",
 			type: 'punishment',
-			order: 10011,
+			order: 301,
 		},
 		'✖': {
 			name: "Namelocked (\u2716)",
 			type: 'punishment',
-			order: 10012,
+			order: 302,
 		},
 		'\u203d': {
 			name: "Locked (\u203d)",
 			type: 'punishment',
-			order: 10013,
+			order: 303,
 		},
 	};
 	defaultGroup: PSGroup = {
-		order: 10006.5,
+		order: 107,
 	};
 	getGroup(symbol: string | undefined) {
 		return this.groups[(symbol || ' ').charAt(0)] || this.defaultGroup;
@@ -347,7 +388,7 @@ interface RoomOptions {
 	type?: string;
 	location?: PSRoomLocation | null;
 	/** Handled after initialization, outside of the constructor */
-	queue?: string[];
+	queue?: Args[];
 	parentElem?: HTMLElement | null;
 	parentRoomid?: RoomID | null;
 	rightPopup?: boolean;
@@ -355,11 +396,23 @@ interface RoomOptions {
 	[k: string]: unknown;
 }
 
-class PSRoom extends PSStreamModel<string | null> implements RoomOptions {
+interface PSNotificationState {
+	title: string;
+	body?: string;
+	/** Used to identify notifications to be dismissed - '' if you only want to autodismiss */
+	id: string;
+	/** normally: automatically dismiss the notification when viewing the room; set this to require manual dismissing */
+	noAutoDismiss: boolean;
+}
+
+/**
+ * As a PSStreamModel, PSRoom can emit `Args` to mean "we received a message",
+ * and `null` to mean "tell Preact to re-render this room"
+ */
+class PSRoom extends PSStreamModel<Args | null> implements RoomOptions {
 	id: RoomID;
 	title = "";
 	type = '';
-	notifying: '' | ' notifying' | ' subtle-notifying' = '';
 	readonly classType: string = '';
 	location: PSRoomLocation = 'left';
 	closable = true;
@@ -371,6 +424,12 @@ class PSRoom extends PSStreamModel<string | null> implements RoomOptions {
 	 * after sending `/leave`, even before the server responds.
 	 */
 	connected: boolean = false;
+	/**
+	 * Can this room even be connected to at all?
+	 * `true` = pass messages from the server to subscribers
+	 * `false` = throw an error if we receive messages from the server
+	 */
+	readonly canConnect: boolean = false;
 	connectWhenLoggedIn: boolean = false;
 	onParentEvent: ((eventId: 'focus' | 'keydown', e?: Event) => false | void) | null = null;
 
@@ -378,6 +437,9 @@ class PSRoom extends PSStreamModel<string | null> implements RoomOptions {
 	height = 0;
 	parentElem: HTMLElement | null = null;
 	rightPopup = false;
+
+	notifications: PSNotificationState[] = [];
+	isSubtleNotifying = false;
 
 	// for compatibility with RoomOptions
 	[k: string]: unknown;
@@ -394,19 +456,64 @@ class PSRoom extends PSStreamModel<string | null> implements RoomOptions {
 		if (options.rightPopup) this.rightPopup = true;
 		if (options.connected) this.connected = true;
 	}
+	notify(options: {title: string, body?: string, noAutoDismiss?: boolean, id?: string}) {
+		if (options.noAutoDismiss && !options.id) {
+			throw new Error(`Must specify id for manual dismissing`);
+		}
+		this.notifications.push({
+			title: options.title,
+			body: options.body,
+			id: options.id || '',
+			noAutoDismiss: options.noAutoDismiss || false,
+		});
+		PS.update();
+	}
+	dismissNotification(id: string) {
+		this.notifications = this.notifications.filter(notification => notification.id !== id);
+		PS.update();
+	}
+	autoDismissNotifications() {
+		this.notifications = this.notifications.filter(notification => notification.noAutoDismiss);
+		this.isSubtleNotifying = false;
+	}
 	setDimensions(width: number, height: number) {
 		if (this.width === width && this.height === height) return;
 		this.width = width;
 		this.height = height;
-		this.update('');
+		this.update(null);
 	}
 	connect(): void {
 		throw new Error(`This room is not designed to connect to a server room`);
 	}
-	receive(message: string): void {
-		throw new Error(`This room is not designed to receive messages`);
+	receiveLine(args: Args): void {
+		switch (args[0]) {
+		case 'title': {
+			this.title = args[1];
+			PS.update();
+			break;
+		} case 'tempnotify': {
+			const [, id, title, body, toHighlight] = args;
+			this.notify({title, body, id});
+			break;
+		} case 'tempnotifyoff': {
+			const [, id] = args;
+			this.dismissNotification(id);
+			break;
+		} default: {
+			if (this.canConnect) {
+				this.update(args);
+			} else {
+				throw new Error(`This room is not designed to receive messages`);
+			}
+		}}
+	}
+	handleMessage(msg: string) {
+		return false;
 	}
 	send(msg: string, direct?: boolean) {
+		if (!direct && !msg) return;
+		if (!direct && this.handleMessage(msg)) return;
+
 		const id = this.id === 'lobby' ? '' : this.id;
 		PS.send(id + '|' + msg);
 	}
@@ -419,10 +526,10 @@ class PSRoom extends PSStreamModel<string | null> implements RoomOptions {
 }
 
 class PlaceholderRoom extends PSRoom {
-	queue = [] as string[];
+	queue = [] as Args[];
 	readonly classType: 'placeholder' = 'placeholder';
-	receive(message: string) {
-		this.queue.push(message);
+	receiveLine(args: Args) {
+		this.queue.push(args);
 	}
 }
 
@@ -642,10 +749,12 @@ const PS = new class extends PSModel {
 		console.log('\u2705 ' + (roomid ? '[' + roomid + '] ' : '') + '%c' + msg, "color: #007700");
 		let isInit = false;
 		for (const line of msg.split('\n')) {
-			if (line.startsWith('|init|')) {
+			const args = BattleTextParser.parseLine(line);
+			switch (args[0]) {
+			case 'init': {
 				isInit = true;
 				room = PS.rooms[roomid2];
-				const type = line.slice(6);
+				const [, type] = args;
 				if (!room) {
 					this.addRoom({
 						id: roomid2,
@@ -660,8 +769,7 @@ const PS = new class extends PSModel {
 				}
 				this.update();
 				continue;
-			}
-			if ((line + '|').startsWith('|deinit|')) {
+			} case 'deinit': {
 				room = PS.rooms[roomid2];
 				if (room) {
 					room.connected = false;
@@ -669,21 +777,20 @@ const PS = new class extends PSModel {
 				}
 				this.update();
 				continue;
-			}
-			if ((line + '|').startsWith('|noinit|')) {
+			} case 'noinit': {
 				room = PS.rooms[roomid2];
 				if (room) {
 					room.connected = false;
-					if ((line + '|').startsWith('|noinit|namerequired|')) {
+					if (args[1] === 'namerequired') {
 						room.connectWhenLoggedIn = true;
 					}
 				}
 				this.update();
 				continue;
-			}
-			if (room) room.receive(line);
+			}}
+			if (room) room.receiveLine(args);
 		}
-		if (room) room.update(isInit ? `|initdone` : null);
+		if (room) room.update(isInit ? [`initdone`] : null);
 	}
 	send(fullMsg: string) {
 		const pipeIndex = fullMsg.indexOf('|');
@@ -810,8 +917,8 @@ const PS = new class extends PSModel {
 			if (roomid === '') this.mainmenu = newRoom as MainMenuRoom;
 
 			if (options.queue) {
-				for (const line of options.queue) {
-					room.receive(line);
+				for (const args of options.queue) {
+					room.receiveLine(args);
 				}
 			}
 			updated = true;
@@ -835,6 +942,7 @@ const PS = new class extends PSModel {
 		} else {
 			return false;
 		}
+		this.room.autoDismissNotifications();
 		this.update();
 		if (this.room.onParentEvent) this.room.onParentEvent('focus', undefined);
 		return true;
@@ -956,8 +1064,8 @@ const PS = new class extends PSModel {
 			this.room = room;
 		}
 		if (options.queue) {
-			for (const line of options.queue) {
-				room.receive(line);
+			for (const args of options.queue) {
+				room.receiveLine(args);
 			}
 		}
 		return room;

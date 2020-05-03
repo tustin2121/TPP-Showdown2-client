@@ -2238,6 +2238,7 @@ const BattleMoveAnims: AnimTable = {
 			}, 'decel', 'fade');
 		},
 	},
+
 	craftyshield: {
 		anim: BattleOtherAnims.selfstatus.anim,
 	},
@@ -16613,6 +16614,51 @@ const BattleMoveAnims: AnimTable = {
 			}, 'ballistic');
 		},
 	},
+	gmaxsteelsurge: {
+		anim(scene, [attacker, defender]) {
+			scene.showEffect('greenmetal1', {
+				x: attacker.x,
+				y: attacker.y,
+				z: attacker.z,
+				scale: 0.1,
+				opacity: 0.5,
+			}, {
+				x: defender.leftof(-30),
+				y: defender.y - 20,
+				z: defender.z,
+				scale: 0.3,
+				opacity: 1,
+			}, 'ballistic');
+			scene.showEffect('greenmetal2', {
+				x: attacker.x,
+				y: attacker.y,
+				z: attacker.z,
+				scale: 0.1,
+				opacity: 0.5,
+				time: 250,
+			}, {
+				x: defender.leftof(35),
+				y: defender.y - 15,
+				z: defender.z,
+				scale: 0.3,
+				opacity: 1,
+			}, 'ballistic');
+			scene.showEffect('greenmetal1', {
+				x: attacker.x,
+				y: attacker.y,
+				z: attacker.z,
+				scale: 0.1,
+				opacity: 0.5,
+				time: 125,
+			}, {
+				x: defender.leftof(50),
+				y: defender.y - 10,
+				z: defender.z,
+				scale: 0.3,
+				opacity: 1,
+			}, 'ballistic');
+		},
+	},
 	spikes: {
 		anim(scene, [attacker, defender]) {
 			scene.showEffect('caltrop', {
@@ -30786,7 +30832,9 @@ BattleMoveAnims['gravapple'] = {anim: BattleMoveAnims['energyball'].anim};
 BattleMoveAnims['spiritbreak'] = {anim: BattleMoveAnims['moonblast'].anim};
 BattleMoveAnims['lifedew'] = {anim: BattleMoveAnims['bubblebeam'].anim};
 BattleMoveAnims['obstruct'] = {anim: BattleMoveAnims['kingsshield'].anim};
+BattleMoveAnims['maxguard'] = {anim: BattleMoveAnims['banefulbunker'].anim};
 BattleMoveAnims['falsesurrender'] = {anim: BattleMoveAnims['feintattack'].anim};
 BattleMoveAnims['meteorassault'] = {anim: BattleMoveAnims['aurasphere'].anim};
 BattleMoveAnims['eternabeam'] = {anim: BattleMoveAnims['roaroftime'].anim};
 BattleMoveAnims['steelbeam'] = {anim: BattleMoveAnims['magnetbomb'].anim};
+BattleMoveAnims['strangesteam'] = {anim: BattleMoveAnims['dazzlinggleam'].anim};

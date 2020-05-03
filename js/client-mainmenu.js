@@ -96,6 +96,13 @@
 				}
 				if (!hasUnread) self.minimizePM($news);
 			});
+
+			if (!app.roomsFirstOpen && window.location.host !== 'demo.psim.us' && window.innerWidth < 630) {
+				if (Config.roomsFirstOpenScript) {
+					Config.roomsFirstOpenScript(true);
+				}
+				app.roomsFirstOpen = 2;
+			}
 		},
 
 		addPseudoPM: function (options) {
@@ -146,7 +153,7 @@
 
 			var autoscroll = ($chatFrame.scrollTop() + 60 >= $chat.height() - $chatFrame.height());
 
-			var parsedMessage = MainMenuRoom.parseChatMessage(message, name, ChatRoom.getTimestamp('pms'), false, $chat);
+			var parsedMessage = MainMenuRoom.parseChatMessage(message, name, ChatRoom.getTimestamp('pms'), false, $chat, false);
 			var mayNotify = true;
 			if (typeof parsedMessage === 'object' && 'noNotify' in parsedMessage) {
 				mayNotify = !parsedMessage.noNotify;
@@ -189,7 +196,7 @@
 				} else {
 					group = '<small>' + BattleLog.escapeHTML(group) + '</small>';
 				}
-				var buf = '<div class="pm-window pm-window-' + userid + '" data-userid="' + userid + '" data-name="' + name + '">';
+				var buf = '<div class="pm-window pm-window-' + userid + '" data-userid="' + userid + '" data-name="' + BattleLog.escapeHTML(name) + '">';
 				buf += '<h3><button class="closebutton" href="' + app.root + 'teambuilder" tabindex="-1" aria-label="Close"><i class="fa fa-times-circle"></i></button>';
 				buf += '<button class="minimizebutton" href="' + app.root + 'teambuilder" tabindex="-1" aria-label="Minimize"><i class="fa fa-minus-circle"></i></button>';
 				buf += group + BattleLog.escapeHTML(name.substr(1)) + '</h3>';
@@ -741,7 +748,13 @@
 				return;
 			}
 
-			if (format) format = toID(format);
+			if (format) {
+				var formatParts = format.split('@@@');
+				formatParts[0] = toID(formatParts[0]);
+				if (!formatParts[0].startsWith('gen')) formatParts[0] = 'gen8' + formatParts[0];
+				format = formatParts[1] ? formatParts[0] + '@@@' + formatParts[1] : formatParts[0];
+			}
+
 			var teamIndex;
 			if (Storage.teams && team) {
 				team = toID(team);
@@ -793,7 +806,9 @@
 			var teamIndex = $pmWindow.find('button[name=team]').val();
 			var team = null;
 			if (Storage.teams[teamIndex]) team = Storage.teams[teamIndex];
-			if (!window.BattleFormats[format].team && !team) {
+
+			// if it's a custom format, let the user figure it out
+			if (window.BattleFormats[format] && !window.BattleFormats[format].team && !team) {
 				app.addPopupMessage("You need to go into the Teambuilder and build a team for this format.");
 				return;
 			}
@@ -850,6 +865,9 @@
 		curTeamFormat: '',
 		curTeamIndex: 0,
 		renderTeams: function (formatid, teamIndex) {
+			if (Storage.whenTeamsLoaded.error) {
+				return '<button class="select teamselect" name="joinRoom" value="teambuilder"><em class="message-error">Error loading teams</em></button>';
+			}
 			if (!Storage.teams || !window.BattleFormats) {
 				return '<button class="select teamselect" name="team" disabled><em>Loading...</em></button>';
 			}
@@ -955,7 +973,7 @@
 			});
 		}
 	}, {
-		parseChatMessage: function (message, name, timestamp, isHighlighted, $chatElem) {
+		parseChatMessage: function (message, name, timestamp, isHighlighted, $chatElem, isChat) {
 			var showMe = !((Dex.prefs('chatformatting') || {}).hideme);
 			var group = ' ';
 			if (!/[A-Za-z0-9]/.test(name.charAt(0))) {
@@ -1007,7 +1025,7 @@
 			case 'error':
 				return '<div class="chat message-error">' + BattleLog.escapeHTML(target) + '</div>';
 			case 'html':
-				return '<div class="chat chatmessage-' + toID(name) + hlClass + mineClass + '">' + timestamp + '<strong style="' + color + '">' + clickableName + ':</strong> <em>' + BattleLog.sanitizeHTML(target) + '</em></div>';
+				return {message: '<div class="chat chatmessage-' + toID(name) + hlClass + mineClass + '">' + timestamp + '<strong style="' + color + '">' + clickableName + ':</strong> <em>' + BattleLog.sanitizeHTML(target) + '</em></div>', noNotify: isChat};
 			case 'uhtml':
 			case 'uhtmlchange':
 				var parts = target.split(',');
@@ -1016,16 +1034,16 @@
 				if (!html) {
 					$elements.remove();
 				} else if (!$elements.length) {
-					$chatElem.append('<div class="chat uhtml-' + toID(parts[0]) + '">' + BattleLog.sanitizeHTML(html) + '</div>');
+					$chatElem.append('<div class="chat uhtml-' + toID(parts[0]) + ' chatmessage-' + toID(name) + '">' + BattleLog.sanitizeHTML(html) + '</div>');
 				} else if (cmd === 'uhtmlchange') {
 					$elements.html(BattleLog.sanitizeHTML(html));
 				} else {
 					$elements.remove();
-					$chatElem.append('<div class="chat uhtml-' + toID(parts[0]) + '">' + BattleLog.sanitizeHTML(html) + '</div>');
+					$chatElem.append('<div class="chat uhtml-' + toID(parts[0]) + ' chatmessage-' + toID(name) + '">' + BattleLog.sanitizeHTML(html) + '</div>');
 				}
-				return '';
+				return {message: '', noNotify: isChat};
 			case 'raw':
-				return '<div class="chat">' + BattleLog.sanitizeHTML(target) + '</div>';
+				return {message: '<div class="chat chatmessage-' + toID(name) + '">' + BattleLog.sanitizeHTML(target) + '</div>', noNotify: isChat};
 			case 'nonotify':
 				return {message: '<div class="chat">' + timestamp + BattleLog.sanitizeHTML(target) + '</div>', noNotify: true};
 			default:
@@ -1131,8 +1149,11 @@
 			this.room = data.room;
 			this.isMoreTeams = data.isMoreTeams || false;
 			var format = BattleFormats[data.format];
+			if (data.format.includes('@@@')) {
+				format = BattleFormats[toID(data.format.split('@@@')[0])];
+			}
 
-			var teamFormat = (format.teambuilderFormat || (format.isTeambuilderFormat ? data.format : false));
+			var teamFormat = (format.teambuilderFormat || (format.isTeambuilderFormat ? format.id : false));
 			this.teamFormat = teamFormat;
 			if (!teams.length) {
 				bufs[curBuf] = '<li><p><em>You have no teams</em></p></li>';

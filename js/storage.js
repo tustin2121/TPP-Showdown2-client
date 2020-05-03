@@ -3,7 +3,7 @@ Config.origindomain = 'play.pokemonshowdown.com';
 // address bar is `Config.origindomain`.
 Config.defaultserver = {
 	id: 'showdown',
-	host: 'sim2.psim.us',
+	host: 'sim3.psim.us',
 	port: 443,
 	httpport: 8000,
 	altport: 80,
@@ -288,6 +288,13 @@ Storage.makeLoadTracker = function () {
 			callback[0].call(callback[1], value);
 		}
 	};
+	tracker.update = function (value) {
+		tracker.value = value;
+		for (var i = 0; i < tracker.callbacks.length; i++) {
+			var callback = tracker.callbacks[i];
+			callback[0].call(callback[1], value);
+		}
+	};
 	tracker.unload = function () {
 		if (!tracker.isLoaded) return;
 		tracker.isLoaded = false;
@@ -369,10 +376,8 @@ Storage.initPrefs = function () {
 			// that feel a need to MitM HTTPS poorly
 			Storage.whenPrefsLoaded.load();
 			if (!Storage.whenTeamsLoaded.isLoaded) {
-				Storage.whenTeamsLoaded.isStalled = true;
-				if (window.app && app.rooms['teambuilder']) {
-					app.rooms['teambuilder'].updateTeamInterface();
-				}
+				Storage.whenTeamsLoaded.error = 'stalled';
+				Storage.whenTeamsLoaded.update();
 			}
 		}, 2000);
 	}
@@ -487,13 +492,11 @@ Storage.postCrossOriginMessage = function (data) {
 	try {
 		// I really hope this is a Chrome bug that this can fail
 		return Storage.crossOriginFrame.postMessage(data, Storage.origin);
-	} catch (e) {
+	} catch (err) {
 		Storage.whenPrefsLoaded.load();
 		if (!Storage.whenTeamsLoaded.isLoaded) {
-			Storage.whenTeamsLoaded.isStalled = true;
-			if (window.app && app.rooms['teambuilder']) {
-				app.rooms['teambuilder'].updateTeamInterface();
-			}
+			Storage.whenTeamsLoaded.error = err;
+			Storage.whenTeamsLoaded.update();
 		}
 	}
 	return false;
@@ -504,7 +507,14 @@ Storage.postCrossOriginMessage = function (data) {
 Storage.initTestClient = function () {
 	Config.server = Config.server || Config.defaultserver;
 	Storage.whenTeamsLoaded.load();
+
+	var sid = null;
+	if (typeof POKEMON_SHOWDOWN_TESTCLIENT_KEY === 'string') {
+		sid = POKEMON_SHOWDOWN_TESTCLIENT_KEY.replace(/\%2C/g, ',');
+	}
+
 	Storage.whenAppLoaded(function (app) {
+		var get = $.get;
 		$.get = function (uri, data, callback, type) {
 			if (type === 'html') {
 				uri += '&testclient';
@@ -518,8 +528,15 @@ Storage.initTestClient = function () {
 			if (uri[0] === '/') { // relative URI
 				uri = Dex.resourcePrefix + uri.substr(1);
 			}
-			app.addPopup(ProxyPopup, {uri: uri, callback: callback});
+
+			if (sid) {
+				data.sid = sid;
+				get(uri, data, callback, type);
+			} else {
+				app.addPopup(ProxyPopup, {uri: uri, callback: callback});
+			}
 		};
+		var post = $.post;
 		$.post = function (uri, data, callback, type) {
 			if (type === 'html') {
 				uri += '&testclient';
@@ -527,13 +544,19 @@ Storage.initTestClient = function () {
 			if (uri[0] === '/') { //relative URI
 				uri = Dex.resourcePrefix + uri.substr(1);
 			}
-			var src = '<!DOCTYPE html><html><body><form action="' + BattleLog.escapeHTML(uri) + '" method="POST">';
-			src += '<input type="hidden" name="testclient">';
-			for (var i in data) {
-				src += '<input type=hidden name="' + i + '" value="' + BattleLog.escapeHTML(data[i]) + '">';
+
+			if (sid) {
+				data.sid = sid;
+				post(uri, data, callback, type);
+			} else {
+				var src = '<!DOCTYPE html><html><body><form action="' + BattleLog.escapeHTML(uri) + '" method="POST">';
+				src += '<input type="hidden" name="testclient">';
+				for (var i in data) {
+					src += '<input type=hidden name="' + i + '" value="' + BattleLog.escapeHTML(data[i]) + '">';
+				}
+				src += '<input type=submit value="Please click this button first."></form></body></html>';
+				app.addPopup(ProxyPopup, {uri: "data:text/html;charset=UTF-8," + encodeURIComponent(src), callback: callback});
 			}
-			src += '<input type=submit value="Please click this button first."></form></body></html>';
-			app.addPopup(ProxyPopup, {uri: "data:text/html;charset=UTF-8," + encodeURIComponent(src), callback: callback});
 		};
 		Storage.whenPrefsLoaded.load();
 	});
@@ -786,9 +809,9 @@ Storage.fastUnpackTeam = function (buf) {
 		// ability
 		j = buf.indexOf('|', i);
 		var ability = buf.substring(i, j);
-		var template = Dex.getTemplate(set.species);
-		if (template.baseSpecies === 'Zygarde' && ability === 'H') ability = 'Power Construct';
-		set.ability = (template.abilities && ['', '0', '1', 'H', 'S'].includes(ability) ? template.abilities[ability] || '!!!ERROR!!!' : ability);
+		var species = Dex.getSpecies(set.species);
+		if (species.baseSpecies === 'Zygarde' && ability === 'H') ability = 'Power Construct';
+		set.ability = (species.abilities && ['', '0', '1', 'H', 'S'].includes(ability) ? species.abilities[ability] || '!!!ERROR!!!' : ability);
 		i = j + 1;
 
 		// moves
@@ -889,7 +912,7 @@ Storage.unpackTeam = function (buf) {
 
 		// species
 		j = buf.indexOf('|', i);
-		set.species = Dex.getTemplate(buf.substring(i, j)).species || set.name;
+		set.species = Dex.getSpecies(buf.substring(i, j)).name || set.name;
 		i = j + 1;
 
 		// item
@@ -900,8 +923,8 @@ Storage.unpackTeam = function (buf) {
 		// ability
 		j = buf.indexOf('|', i);
 		var ability = Dex.getAbility(buf.substring(i, j)).name;
-		var template = Dex.getTemplate(set.species);
-		set.ability = (template.abilities && ability in {'':1, 0:1, 1:1, H:1} ? template.abilities[ability || '0'] : ability);
+		var species = Dex.getSpecies(set.species);
+		set.ability = (species.abilities && ability in {'':1, 0:1, 1:1, H:1} ? species.abilities[ability || '0'] : ability);
 		i = j + 1;
 
 		// moves
@@ -1124,11 +1147,11 @@ Storage.importTeam = function (buffer, teams) {
 			var parenIndex = line.lastIndexOf(' (');
 			if (line.substr(line.length - 1) === ')' && parenIndex !== -1) {
 				line = line.substr(0, line.length - 1);
-				curSet.species = Dex.getTemplate(line.substr(parenIndex + 2)).species;
+				curSet.species = Dex.getSpecies(line.substr(parenIndex + 2)).name;
 				line = line.substr(0, parenIndex);
 				curSet.name = line;
 			} else {
-				curSet.species = Dex.getTemplate(line).species;
+				curSet.species = Dex.getSpecies(line).name;
 				curSet.name = '';
 			}
 		} else if (line.substr(0, 7) === 'Trait: ') {
@@ -1433,7 +1456,11 @@ Storage.nwLoadTeams = function () {
 	var localApp = window.app;
 	var dirOffset = this.dir.length + 6;
 	Storage.nwFindTextFilesRecursive(this.dir + 'Teams', function (err, files) {
-		if (err) return;
+		if (err) {
+			Storage.whenTeamsLoaded.error = err;
+			Storage.whenTeamsLoaded.update();
+			return;
+		}
 		self.teams = [];
 		self.nwTeamsLeft = files.length;
 		if (!self.nwTeamsLeft) {

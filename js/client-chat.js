@@ -436,6 +436,7 @@
 			}
 
 			switch (cmd.toLowerCase()) {
+			case 'chal':
 			case 'chall':
 			case 'challenge':
 				var targets = target.split(',');
@@ -547,12 +548,21 @@
 						type: 'modal',
 						htmlMessage: "Extracted team data:<br /><textarea rows=\"10\" cols=\"60\">" + BattleLog.escapeHTML(JSON.stringify(Storage.teams)) + "</textarea>"
 					});
+				} else if (target === 'nw') {
+					try {
+						nw.Window.get().showDevTools();
+					} catch (e) {
+						this.add('|error|' + e.message);
+					}
 				} else {
 					this.add('|error|Unknown debug command.');
 					this.add('|error|Are you looking for /showdebug and /hidedebug?');
 				}
 				return false;
 
+			case 'news':
+				app.rooms[''].addNews();
+				return false;
 			case 'autojoin':
 			case 'cmd':
 			case 'crq':
@@ -638,7 +648,6 @@
 			case 'logout':
 				app.user.logout();
 				return false;
-
 			case 'showdebug':
 				this.add('Debug battle messages: ON');
 				Dex.prefs('showdebug', true);
@@ -804,6 +813,7 @@
 				} else {
 					if (target === 'delete') {
 						Dex.prefs('highlights', false);
+						this.updateHighlightRegExp({});
 						this.add("All highlights cleared");
 					} else if (['show', 'list', 'roomshow', 'roomlist'].includes(target)) {
 						// Shows a list of the current highlighting words
@@ -1006,6 +1016,9 @@
 				case 'open':
 					this.add('/user [user] - Open a popup containing the user [user]\'s avatar, name, rank, and chatroom list.');
 					return false;
+				case 'news':
+					this.add('/news - Opens a popup containing the news.');
+					return false;
 				case 'ignore':
 				case 'unignore':
 					this.add('/ignore [user] - Ignore all messages from the user [user].');
@@ -1078,7 +1091,7 @@
 		challengeUserdetails: function (data) {
 			app.off('response:userdetails', this.challengeUserdetails);
 
-			if (!data || this.challengeData.userid !== data.userid) return;
+			if (!data) return;
 
 			if (data.rooms === false) {
 				this.add('This player does not exist or is not online.');
@@ -1086,7 +1099,8 @@
 			}
 
 			app.focusRoom('');
-			var name = data.name || this.challengeData.userid;
+			// if foe has changed name, challengeData.userid will be wrong, so defer to data
+			var name = data.name || data.userid;
 			if (/^[a-z0-9]/i.test(name)) name = ' ' + name;
 			app.rooms[''].challenge(name, this.challengeData.format, this.challengeData.team);
 		},
@@ -1162,7 +1176,7 @@
 		maxWidth: 1024,
 		isSideRoom: true,
 		initialize: function () {
-			var buf = '<div class="tournament-wrapper"></div><div class="chat-log"><div class="inner" role="log"></div></div></div><div class="chat-log-add">Connecting...</div><ul class="userlist"></ul>';
+			var buf = '<div class="tournament-wrapper"></div><div class="chat-log"><div class="inner message-log" role="log"></div></div></div><div class="chat-log-add">Connecting...</div><ul class="userlist"></ul>';
 			this.$el.addClass('ps-room-light').html(buf);
 
 			this.$chatAdd = this.$('.chat-log-add');
@@ -1421,6 +1435,8 @@
 						// but it's now always applied
 						$messages = this.$chat.find('.chatmessage-' + user);
 						if (!$messages.length) break;
+						var lineCount = parseInt(row[3], 10) || 0;
+						if (lineCount) $messages = $messages.slice(-lineCount);
 						$messages.hide().addClass('revealed').find('button').parent().remove();
 						this.$chat.children().last().append(' <button name="toggleMessages" value="' + user + '" class="subtle"><small>(' + $messages.length + ' line' + ($messages.length > 1 ? 's' : '') + ' from ' + user + ' hidden)</small></button>');
 					}
@@ -1611,7 +1627,7 @@
 			}
 
 			var isHighlighted = userid !== app.user.get('userid') && this.getHighlight(message);
-			var parsedMessage = MainMenuRoom.parseChatMessage(message, name, ChatRoom.getTimestamp('chat', msgTime), isHighlighted);
+			var parsedMessage = MainMenuRoom.parseChatMessage(message, name, ChatRoom.getTimestamp('chat', msgTime), isHighlighted, this.$chat, true);
 			if (typeof parsedMessage === 'object' && 'noNotify' in parsedMessage) {
 				mayNotify = mayNotify && !parsedMessage.noNotify;
 				parsedMessage = parsedMessage.message;
