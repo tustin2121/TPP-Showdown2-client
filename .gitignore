@@ -28,6 +28,7 @@ package-lock.json
 /js/battle-scene-stub.js
 /js/battle-search.js
 /js/battle-searchresults.js
+/js/battle-sound*.js
 /js/client-core.js
 /js/client-main.js
 /js/client-connection.js

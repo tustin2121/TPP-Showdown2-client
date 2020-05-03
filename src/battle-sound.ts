@@ -17,6 +17,7 @@ interface BgmInfo {
 	loop?: [number, number];
 	isVictory: boolean;
 	isHidden: boolean;
+	winMusic?: string;
 	stateMachine?: any;
 }
 
@@ -24,26 +25,31 @@ const BGM_PATH = "audio/bgm/";
 
 const DEFAULT_BGM_STATE_MACHINE = {
 	streams: {
-		"main": { loop:[0.000, 0.000], trans:'cut'      pause:'randstart' },
-		"win":  { loop:[0.000, 0.000], trans:'fade-out' pause:'cut'},
+		"main": { loop:[0.000, 0.000], trans:'cut' },
+		"win":  { loop:[0.000, 0.000], trans:'fade-out' },
 	},
 	states: {
 		main: {
 			triggers:['start'],
 			streams:['main@100'],
 			next:['win'],
+			pause:'randstart',
 		},
 		win: {
 			triggers:['win', 'tie'],
 			streams:['win@100'],
 			next:[],
+			pause:'cut',
 		},
 	},
 };
 
 
 const BattleSound = new class {
-	musicMetatable: {[string]:BgmInfo | string}
+	musicMetatable: {[string]:BgmInfo | string};
+	
+	soundBank: {[string]:Playable};
+	musicBank: {[string]:Playable};
 	
 	randBattleMusic: Array<string> = [];
 	randVictoryMusic: Array<string> = [];
@@ -57,16 +63,53 @@ const BattleSound = new class {
 	
 	playHidden = false;
 	
-	
-	///////////////////////////////////////////////////////////////////////////
-	// Externally referenced functions, must stay the same for compatiility
-	
-	playEffect(url: string) {
-		if (!this.muted) this.loadEffect(url).setVolume(this.effectVolume).play();
+	private getMusicMeta(id:string): BgmInfo {
+		if (!id) return null;
+		let meta = this.musicMetatable[id];
+		if (meta && meta.url) return meta;
+		
+		if (typeof meta === 'string') {
+			meta = this.musicMetatable[meta];
+			if (meta && meta.url) return meta;
+		}
+		if (id.indexOf('/') === -1) {
+			let mid = id.replace('-', '/'); //replaces first dash with a slash
+			meta = this.musicMetatable[mid];
+			if (meta && meta.url) return meta;
+		}
+		return null;
+	}
+	private getRandomBattleMusic(): string {
+		return this.randBattleMusic[Math.floor(Math.random() * this.randBattleMusic.length)];
+	}
+	private getRandomVictoryMusic(): string {
+		return this.randVictoryMusic[Math.floor(Math.random() * this.randVictoryMusic.length)];
 	}
 	
-	loadBgm(url: string, loopstart: number, loopend: number, replaceBGM?: BattleBGM | null) {
+	///////////////////////////////////////////////////////////////////////////
+	// Externally referenced functions
+	
+	playEffect(url: string):void {
+		if (soundManager.isMuted) return;
+		let sound = this.loadEffect(url);
+		if (sound) sound.play();
+	}
+	
+	loadMusic(id:string) {
+		let mainMeta, winMeta;
 		
+		mainMeta = this.getMusicMeta(id);
+		winMeta = this.getMusicMeta(mainMeta.winMusic || this.getRandomVictoryMusic());
+		
+		let sconfig = (meta as BgmInfo).stateMachine;
+		if (!sconfig) {
+			sconfig = { states:DEFAULT_BGM_STATE_MACHINE.states };
+			sconfig.streams = {
+				"main": Object.assign({}, DEFAULT_BGM_STATE_MACHINE.streams["main"], mainMeta),
+				"win": Object.assign({}, DEFAULT_BGM_STATE_MACHINE.streams["win"], winMeta),
+			};
+		}
+		let music = soundManager.createMusic(meta);
 	}
 	
 	///////////////////////////////////////////////////////////////////////////
@@ -88,6 +131,7 @@ const BattleSound = new class {
 				loop: value.loop,
 				isVictory: !!value.tags.victory,
 				isHidden: !!value.tags.hidden,
+				winMusic: value.victoryMusic,
 			};
 			if (value.tags.random) {
 				if (value.tags.victory) 
@@ -121,8 +165,19 @@ const BattleSound = new class {
 	///////////////////////////////////////////////////////////////////////////
 	// Internally referenced functions
 	
+	loadEffect(url: string): Sound {
+		const id = url;
+		let sound:Sound = this.soundBank[id];
+		if (!sound) {
+			this.soundBank[id] = sound = soundManager.createSound({
+				id, url, type:'sound',
+			});
+		}
+		return sound;
+	}
+	
 	setMute(muted: boolean) {
-		//TODO
+		soundManager.isMuted = !!muted;
 	}
 	loudnessPercentToAmplitudePercent(loudnessPercent: number) {
 		// 10 dB is perceived as approximately twice as loud
@@ -130,10 +185,9 @@ const BattleSound = new class {
 		return Math.pow(10, decibels / 20) * 100;
 	}
 	setBgmVolume(bgmVolume: number) {
-		this.bgmVolume = this.loudnessPercentToAmplitudePercent(bgmVolume);
-		//TODO
+		soundManager.bgmVolume = this.loudnessPercentToAmplitudePercent(bgmVolume);
 	}
 	setEffectVolume(effectVolume: number) {
-		this.effectVolume = this.loudnessPercentToAmplitudePercent(effectVolume);
+		soundManager.effectVolume = this.loudnessPercentToAmplitudePercent(effectVolume);
 	}
 };

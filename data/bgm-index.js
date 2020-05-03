@@ -48,11 +48,11 @@ BattleSound.registerBGMs({
 "bw/cynthia":				{ loop:[22.340, 97.357], tags:{ random:1, champ:1, }, 		info:"Pokémon Black/White - Battle! Cynthia" },
 "bw/pkmn-league":			{ loop:[ 1.556, 37.567], tags:{  }, 						info:"Pokémon Black/White - Pokemon League" },
 
-"bw2/kanto-gym":			{ loop:[14.626, 58.986], tags:{ random:1, }, 				info:"Pokémon Black2/White2 - Battle! Kanto Gym Leader", victoryMusic:'hgss-johto-gym-win' },
+"bw2/kanto-gym":			{ loop:[14.626, 58.986], tags:{ random:1, }, 				info:"Pokémon Black2/White2 - Battle! Kanto Gym Leader", victoryMusic:'hgss/johto-gym-win' },
 "bw2/rival":				{ loop:[ 7.152, 68.708], tags:{ random:1, }, 				info:"Pokémon Black2/White2 - Battle! Rival" },
-"bw2/gym":					{ loop:[36.846,110.508], tags:{ random:1, gym:1, }, 		info:"Pokémon Black2/White2 - Battle! Gym Leader", victoryMusic:'bw-gym-win' },
-"bw2/champion":				{ loop:[11.235,103.757], tags:{ random:1, champ:1, }, 		info:"Pokémon Black2/White2 - Battle! Champion", victoryMusic:'bw-champion-win' },
-"bw2/plasma":				{ loop:[18.273,105.565], tags:{ random:1, }, 				info:"Pokémon Black2/White2 - Battle! Team Plasma", victoryMusic:'bw-plasma-win' },
+"bw2/gym":					{ loop:[36.846,110.508], tags:{ random:1, gym:1, }, 		info:"Pokémon Black2/White2 - Battle! Gym Leader", victoryMusic:'bw/gym-win' },
+"bw2/champion":				{ loop:[11.235,103.757], tags:{ random:1, champ:1, }, 		info:"Pokémon Black2/White2 - Battle! Champion", victoryMusic:'bw/champion-win' },
+"bw2/plasma":				{ loop:[18.273,105.565], tags:{ random:1, }, 				info:"Pokémon Black2/White2 - Battle! Team Plasma", victoryMusic:'bw/plasma-win' },
 "bw2/n":					{ loop:[23.779, 78.459], tags:{ random:1, }, 				info:"Pokémon Black2/White2 - Battle! N" },
 "bw2/colress":				{ loop:[12.869,116.843], tags:{ random:1, }, 				info:"Pokémon Black2/White2 - Battle! Colress" },
 "bw2/ghetsis":				{ loop:[29.441, 89.455], tags:{ random:1, }, 				info:"Pokémon Black2/White2 - Battle! Ghetsis" },
@@ -134,8 +134,8 @@ BattleSound.registerBGMs({
 
 "hidden/rickroll":			{ loop:[36.305,154.569], tags:{ random:1, hidden:1, },		info:"Rick Astley - Never Gonna Give You Up" },
 "hidden/colress":			{ loop:[12.369,116.343], tags:{ random:1, hidden:1, },		info:"Pokémon Black2/White2 - Battle! Colress" },
-"hidden/iris":				{ loop:[11.378,103.878], tags:{ random:1, hidden:1, }, 		info:"Pokémon Black2/White2 - Battle! Champion", victoryMusic:'bw-champion-win' },
-"hidden/iris2":				{ loop:[10.758,150.760], tags:{ random:1, hidden:1, }, 		info:"Pokémon Black2/White2 - Battle! Champion", victoryMusic:'bw-champion-win' },
+"hidden/iris":				{ loop:[11.378,103.878], tags:{ random:1, hidden:1, }, 		info:"Pokémon Black2/White2 - Battle! Champion", victoryMusic:'bw/champion-win' },
+"hidden/iris2":				{ loop:[10.758,150.760], tags:{ random:1, hidden:1, }, 		info:"Pokémon Black2/White2 - Battle! Champion", victoryMusic:'bw/champion-win' },
 // "hidden/gladion":			{ loop:[14.341, 86.008], tags:{ random:1, hidden:1, }, 		info:"Pokémon Sun/Moon - Battle! Gladion" },
 "hidden/gladion2":			{ loop:[14.341,157.675], tags:{ random:1, hidden:1, }, 		info:"Pokémon Sun/Moon - Battle! Gladion" },
 "hidden/lance":				{ loop:[23.719, 68.085], tags:{ random:1, hidden:1, }, 		info:"Pokémon HeartGold/SoulSilver - Battle! Champion" },
@@ -259,47 +259,71 @@ BattleSound.registerBGMs({
 
 });
 
-BattleSound.registerDynamicBGM("swsh/gym", {
-	info: "Pokémon Sword/Shield - Battle! Gym Leader",
-	tags: {},
-	streams: {
-		"intro":    { loop:[0.000, 0.000], trans:'wait-end'               pause:'lowpass'},
-		"normal":   { loop:[0.000, 0.000], trans:'cut-on-beat', beat:0.0, pause:'lowpass'},
-		"regress":  { loop:[0.000, 0.000], trans:'cut-on-beat', beat:0.0, pause:'lowpass'},
-		"progress": { loop:[0.000, 0.000], trans:'cut-on-beat', beat:0.0, pause:'lowpass'},
-		"final":    { loop:[0.000, 0.000], trans:'cut'                    pause:'lowpass'},
-		"win":      { loop:[0.000, 0.000], trans:'fade-out',              pause:'cut'},
-	},
+const stadiumBattleState = {
 	states: {
 		intro: { 
 			triggers:['start'], 
 			streams:['intro@100'], 
-			next:['main','regress','progress'] 
+			next:['main','regress','progress'],
+			pause:'lowpass',
 		},
 		main: {
 			triggers:['turn', 'join|player', 'inactiveoff'],
 			streams:['normal@100', 'regress@0', 'progress@0'], 
-			next:['main','regress','progress', 'final', 'win'] 
-		},
-		regress: {
-			triggers:['faint|me', 'leave|player', 'inactive'],
-			streams:['normal@0', 'regress@100', 'progress@0'],
-			next:['main','regress','progress', 'final', 'win']
+			next:['regress', 'progress', 'final', 'win'],
+			pause:'lowpass',
 		},
 		progress: { 
 			triggers:['faint|you'],
 			streams:['normal@0', 'regress@0', 'progress@100'],
-			next:['main','regress','progress', 'final', 'win']
+			next:['main', 'regress', 'final', 'win'],
+			pause:'lowpass',
+			disableInReplay: true,
+		},
+		regress: {
+			triggers:['faint|me', 'leave|player', 'inactive'],
+			streams:['normal@0', 'regress@100', 'progress@0'],
+			next:['main', 'progress', 'final', 'win'],
+			pause:'lowpass',
+			disableInReplay: true,
 		},
 		final: {
 			triggers:['lastmon'],
 			streams:['final@100'], 
-			next:['win']
+			next:['win'],
+			pause:'lowpass',
 		},
 		win: {
 			triggers:['win', 'tie'],
 			streams:['win@100'],
-			next:[]
+			next:[],
+			pause:'cut',
 		},
 	},
-});
+};
+
+BattleSound.registerDynamicBGM("swsh/gym", Object.assign({
+	info: "Pokémon Sword/Shield - Battle! Gym Leader",
+	tags: {},
+	streams: {
+		"intro":    { loop:[0.000, 0.000], trans:'wait-end' },
+		"normal":   { loop:[0.000, 0.000], trans:'cut-on-beat', beat:0.0 },
+		"progress": { loop:[0.000, 0.000], trans:'cut-on-beat', beat:0.0 },
+		"regress":  { loop:[0.000, 0.000], trans:'cut-on-beat', beat:0.0 },
+		"final":    { loop:[0.000, 0.000], trans:'cut' },
+		"win":      { loop:[0.000, 0.000], trans:'fade-out' },
+	},
+}, stadiumBattleState));
+
+BattleSound.registerDynamicBGM("swsh/tourny", Object.assign({
+	info: "Pokémon Sword/Shield - Battle! Tournament Battle",
+	tags: {},
+	streams: {
+		"intro":    { loop:[0.000, 0.000], trans:'wait-end' },
+		"normal":   { loop:[0.000, 0.000], trans:'cut-on-beat', beat:0.0 },
+		"progress": { loop:[0.000, 0.000], trans:'cut-on-beat', beat:0.0 },
+		"regress":  { loop:[0.000, 0.000], trans:'cut-on-beat', beat:0.0 },
+		"final":    { loop:[0.000, 0.000], trans:'cut' },
+		"win":      { loop:[0.000, 0.000], trans:'fade-out' },
+	},
+}, stadiumBattleState));
