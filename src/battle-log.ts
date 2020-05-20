@@ -598,17 +598,21 @@ class BattleLog {
 		'i'));
 		return {
 			isWhitelisted(uri: string) {
-				if (uri[0] === '/' && uri[1] !== '/') {
-					// domain-relative URIs are safe
-					return true;
-				}
-				for (const pattern of patterns) {
-					if (pattern.test(uri)) return true;
-				}
-				return false;
+				// TPP: Allow all sites, without interstitial
+				return true;
+				// if (uri[0] === '/' && uri[1] !== '/') {
+				// 	// domain-relative URIs are safe
+				// 	return true;
+				// }
+				// for (const pattern of patterns) {
+				// 	if (pattern.test(uri)) return true;
+				// }
+				// return false;
 			},
 			getURI(uri: string) {
-				return 'http://pokemonshowdown.com/interstice?uri=' + encodeURIComponent(uri);
+				// TPP: Allow all sites, without interstitial
+				return uri;
+				// return 'http://pokemonshowdown.com/interstice?uri=' + encodeURIComponent(uri);
 			},
 		};
 	})();

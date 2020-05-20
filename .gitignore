@@ -1,11 +1,10 @@
 /sprites/
 /audio/
 /config/
-/index.php
+!/index.php
 /index.html
 /preactalpha.html
 /data/*
-!/data/learnsets-g6.js
 !/data/bgm-index.js
 !/data/bgs-index.js
 node_modules/
@@ -48,5 +47,8 @@ package-lock.json
 /replays/caches/
 /replays/replay-config.inc.php
 /replays/theme/wrapper.inc.php
+
+/lib-other/
+/lib/ntbb-config.lib.php
 
 .vscode
