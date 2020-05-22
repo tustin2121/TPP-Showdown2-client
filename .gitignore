@@ -51,4 +51,17 @@ package-lock.json
 /lib-other/
 /lib/ntbb-config.lib.php
 
+/emotes/*
+!/emotes/-x/
+!/emotes/-robot/
+!/emotes/emoteregex.js
+!/emotes/update-emotes
+
+/badges/*
+!/badges/_Error_.png
+!/badges/_trainercard_bg.png
+!/badges/badge-get.mp3
+!/badges/badge-anim.js
+
+
 .vscode

@@ -1,0 +1,340 @@
+#!/usr/bin/env node
+'use strict';
+
+const fs = require("fs");
+const path = require("path");
+const http = require("https");
+
+const DIR = path.join(__dirname);
+
+// If this script should redownload images for emotes we already have.
+const REPLACE = false;
+
+console.write = function(...data){
+	process.stdout.write(data.join(' '));
+};
+
+let orphanedEmotes = [];
+let emoteRegexes = {};
+let emoteUrlTemplate;
+let storedData;
+
+Promise.resolve()
+////////////////////////////////////////////////////////////////////////////////
+// Request global emotes
+.then(()=>{
+	console.write("Requesting global emotes.");
+	return requestJSON("https://twitchemotes.com/api_cache/v3/global.json");
+}).then((data)=>{
+	emoteUrlTemplate = "https://static-cdn.jtvnw.net/emoticons/v1/{image_id}/1.0";
+	storedData = data;
+	
+	console.log("Indexing and downloading global emotes...");
+	try { fs.mkdirSync(path.join(DIR, "-global")); } catch (e) { if (e.code!='EEXIST') throw e; }
+	let currEmotes = fs.readdirSync(path.join(DIR, "-global")).filter(f=>f.endsWith(".png")).map(f=>f.replace(".png", ""));
+	let emotes = [];
+	let emotePromises = [];
+	// console.log(data);
+	for (let e in data) {
+		let eminfo = data[e];
+		rm(currEmotes, e);
+		emotes.push(e);
+		emotePromises.push(pullEmote("-global", e, eminfo.id));
+	}
+	Array.prototype.push.apply(orphanedEmotes, currEmotes.map(f=>path.join("-global", f)));
+	emoteRegexes["-global"] = emotes;
+	return Promise.all(emotePromises);
+	
+})
+
+////////////////////////////////////////////////////////////////////////////////
+// Request subscriber emotes
+.then(()=>{
+	console.write("\nRequesting subscriber emotes.");
+	// return requestJSON("https://twitchemotes.com/api_cache/v3/subscriber.json");
+	return requestJSON("https://twitchemotes.com/api_cache/v3/images.json");
+}).then((data)=>{
+	emoteUrlTemplate = "https://static-cdn.jtvnw.net/emoticons/v1/{image_id}/1.0";
+	storedData = data;
+})
+// === Insert Twitch Channels to download Sub emotes from here ===
+// .then(downloadChannelEmotesFor("--twitch-curse-integration--")) // This is causing problems with TwitchLit
+// .then(downloadChannelEmotesFor("--twitch-turbo--")) // removing because it doesn't seem to be in the API anymore???
+// .then(downloadChannelEmotesFor("srkevo4"))
+.then(downloadChannelEmotesFor("puncayshun"))
+.then(downloadChannelEmotesFor("lffn"))
+.then(downloadChannelEmotesFor("cirno_tv"))
+.then(downloadChannelEmotesFor("auslove"))
+.then(downloadChannelEmotesFor("twitchplayspokemon"))
+.then(downloadChannelEmotesFor("evo"))
+
+////////////////////////////////////////////////////////////////////////////////
+// Download extra emotes from FrankerFaceZ
+.then(()=>{
+	emoteUrlTemplate = "https://cdn.frankerfacez.com/emoticon/{image_id}/1";
+	storedData = null;
+	
+	console.log("\nDownloading FrankerFaceZ emotes...");
+	let ffzemotes = {
+	// === Insert FrankerFaceZ emotes here ===
+		"tbSriracha" : 76588,
+		"tbSpicy": 76587,
+		"tbQuesarito": 76586,
+		"tbBaconBiscuit": 0, //Doesn't exist anymore
+		"tbSausageBiscuit": 0, //Doesn't exist anymore
+		"tbChickenBiscuit": 76535,
+		"monikaS": 235966,
+		"MonikA": 219015,
+		"MonikaDeleteTime": 219101,
+		"MonikaSmug": 220630,
+		"SayoriHxppy": 219414,
+		"SayoriThink": 245660,
+		"SayoriXD": 219871,
+		"SayoriDX": 219441,
+		"SayoriPout": 219445,
+		"YuriBlush": 218728,
+		"YuriComfy": 225703,
+		"YuriSmug": 219150,
+		"NatsukiCute": 284569,
+		"NatsukiDX": 219524,
+		"NatsukiSmug": 236443,
+		"Thonk": 214385,
+	// === End FFZ emotes ===
+	};
+	
+	try { fs.mkdirSync(path.join(DIR, "-ffz")); } catch (e) { if (e.code!='EEXIST') throw e; }
+	let emotes = [];
+	let emotePromises = [];
+	for (let e in ffzemotes) {
+		emotes.push(e);
+		emotePromises.push(pullEmote("-ffz", e, ffzemotes[e]));
+	}
+	emoteRegexes["-ffz"] = emotes;
+	return Promise.all(emotePromises);
+})
+
+////////////////////////////////////////////////////////////////////////////////
+// Move any Orphaned emotes into the extras folder
+.then(()=>{
+	if (orphanedEmotes.length == 0) {
+		console.log("\nMoving orphaned emotes... SKIPPED, no orphans");
+		return true;
+	}
+	console.log("\nMoving orphaned emotes...");
+	let extraDir = path.join(DIR, "-x");
+	try { fs.mkdirSync(extraDir); } catch (e) { if (e.code!='EEXIST') throw e; }
+	
+	for(let i = 0; i < orphanedEmotes.length; i++) {
+		let oldp = orphanedEmotes[i]+".png";
+		let newp = path.join(extraDir, path.basename(orphanedEmotes[i])+".png");
+		fs.renameSync(oldp, newp);
+		console.log(`Emote '${path.relative(DIR, orphanedEmotes[i])} ==> -x/${path.basename(orphanedEmotes[i])}.png`);
+	}
+	console.log("DONE");
+	return true;
+})
+
+////////////////////////////////////////////////////////////////////////////////
+// Index extra emotes that we're just hanging onto after they've been removed
+.then(()=>{
+	console.log("\nIndexing extra emotes...");
+	let extraDir = path.join(DIR, "-x");
+	try { fs.mkdirSync(extraDir); } catch (e) { if (e.code!='EEXIST') throw e; }
+	
+	let emotes = [];
+	let files = fs.readdirSync(extraDir);
+	if (files.length == 0) return true;
+	
+	outerLoop:
+	for (let i = 0; i < files.length; i++) {
+		if (!files[i].endsWith(".png")) continue; //skip non-images
+		let e = files[i].replace(".png", "");
+		for (let x in emoteRegexes) {
+			for (let y = 0; y < emoteRegexes[x].length; y++) {
+				if (emoteRegexes[x][y] == e) {
+					console.log(`Emote '-x/${e} : ALREADY PRESENT IN ${x}`);
+					continue outerLoop;
+				}
+			}
+		}
+		emotes.push(e);
+		console.log(`Emote '-x/${e} : NOTED`);
+	}
+	emoteRegexes["-x"] = emotes;
+	return true;
+})
+
+////////////////////////////////////////////////////////////////////////////////
+// Completing Script
+.then(()=>{
+	console.write("\nWriting emoterejex.js...");
+	// Finally, create the regex scripts
+	let script = 
+`// Twitch Emote regexes
+
+var processEmoteRegExp = function(str) {
+	// Robot emotes
+	str = str.replace(/&lt;3\\b/g, 
+		'<img src="/emotes/-robot/heart.png" alt="&lt;3" title="&lt;3" class="emote">');
+`;
+	for (let i in emoteRegexes) {
+		let name = i;
+		if (name == '-ffz') name = "FrankerFaceZ";
+		if (name == '-x') name = "Extra";
+		script += `\t// ${name} emotes\n\tstr = str.replace(`;
+		script += `/\\b(${emoteRegexes[i].join("|")})\\b/g`;
+		script += `,\n\t\t'<img src="/emotes/${i}/$&.png" alt="$&" title="$&" class="emote"/>');\n`;
+	}
+	script += `\treturn str;
+};\n`;
+	
+	fs.writeFileSync(path.join(DIR, "emoteregex.js"), script, 'utf8');
+	console.log("DONE");
+	return true;
+}).then(()=>{
+	console.log("SCRIPT COMPLETE");
+}).catch((e)=>{
+	process.nextTick(function(){
+		throw e;
+	});
+});
+
+
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Functions
+
+// Request JSON from an arbitrary URL
+function requestJSON(url) {
+	return new Promise(function(resolve, reject){
+		let req = http.get(url, (res)=>{
+			const statusCode = res.statusCode;
+			const contentType = res.headers['content-type'];
+			
+			let error;
+			if (statusCode !== 200) {
+				error = new Error(`Request Failed.\nStatus Code: ${statusCode}`);
+			} else if (!/^application\/json/.test(contentType)) {
+				error = new Error(`Invalid content-type.\nExpected application/json but received ${contentType}`);
+			}
+			if (error) {
+				console.log("ERROR");
+				console.log(error.message);
+				// consume response data to free up memory
+				res.resume();
+				return reject();
+			}
+			
+			res.setEncoding('utf8');
+			let rawData = '';
+			res.on('data', (chunk) => {
+				rawData += chunk;
+				console.write(".");
+			});
+			res.on('end', () => {
+				try {
+					let parsedData = JSON.parse(rawData);
+					console.log("DONE");
+					resolve(parsedData);
+				} catch (e) {
+					console.log("ERROR: "+e.message);
+					reject();
+				}
+			});
+		}).on('error', (e) => {
+			console.log(`ERROR: ${e.message}`);
+			reject();
+		});
+	});
+}
+
+// Pull emotes from emoteUrlTemplate
+function pullEmote(chan, name, imgid){
+	let url = emoteUrlTemplate.replace(/\\\//g, "/").replace("{image_id}", imgid);
+	let outpath = path.join(DIR, chan, name+".png");
+	let existing = true;
+	try { fs.accessSync(outpath); } catch (err) { if (err.code === "ENOENT") existing = false; }
+	if (existing && !REPLACE) {
+		console.log(`Emote '${chan}/${name} : EXISTS`);
+		return Promise.resolve();
+	}
+	return new Promise(function(resolve, reject){
+		http.get(url, (res)=>{
+			const statusCode = res.statusCode;
+			const contentType = res.headers['content-type'];
+			
+			let warning = '';
+			let error;
+			if (statusCode !== 200) {
+				error = `ERROR ${statusCode}`;
+			} else if (!contentType) {
+				warning = ' [WARN: Missing Content-type!]';
+			} else if (!/^image\/(png)/.test(contentType)) {
+				error = `ERROR Invalid content-type ${contentType}`;
+			}
+			if (error) {
+				console.log(`Emote '${chan}/${name} : ${error}`);
+				// consume response data to free up memory
+				res.resume();
+				return resolve(); //don't reject, or Promise.all() will fail
+			}
+			
+			let outstream = fs.createWriteStream(outpath+".0");
+			outstream.on('error', (err)=>{
+				console.log(`Emote '${chan}/${name} : ERROR ${err.message}`);
+				resolve(); //don't reject, or Promise.all() will fail
+			});
+			outstream.on('finish', ()=>{
+				console.log(`Emote '${chan}/${name} : ${existing?"REPLACED":"DOWNLOADED"}${warning}`);
+				fs.renameSync(outpath+".0", outpath);
+				resolve();
+			});
+			res.pipe(outstream);
+		});
+	});
+}
+
+function downloadChannelEmotesFor(channel) {
+	let cname = channel.replace(/^--([a-zA-Z0-9_\-]+)--$/, "-$1");
+	return function(){
+		console.log(`\nIndexing and downloading emotes for channel ${channel}...`);
+		try { fs.mkdirSync(path.join(DIR, cname)); } catch (e) { if (e.code!='EEXIST') throw e; }
+		let data = getEmotesByChannelName(storedData, cname);
+		
+		if (!data || data.length == 0) {
+			console.log("SKIPPING: No emotes for this channel!");
+			return Promise.resolve();
+		}
+		let currEmotes = fs.readdirSync(path.join(DIR, cname)).filter(f=>f.endsWith(".png")).map(f=>f.replace(".png", ""));
+		let emotes = [];
+		let emotePromises = [];
+		data.forEach(emote => {
+			rm(currEmotes, emote.code);
+			emotes.push(emote.code);
+			emotePromises.push(pullEmote(cname, emote.code, emote.id));
+		});
+		Array.prototype.push.apply(orphanedEmotes, currEmotes.map(f=>path.join(cname, f)));
+		emoteRegexes[cname] = emotes;
+		return Promise.all(emotePromises);
+	};
+}
+
+function rm(arr, ele) {
+	let idx = arr.indexOf(ele);
+	while (idx !== -1) {
+		arr.splice(idx, 1);
+		idx = arr.indexOf(ele);
+	}
+}
+
+function getChannelIDByName(data, cname) {
+	return Object.keys(data).find(id => data[id].channel_name === cname);
+}
+
+function getEmotesByChannelName(data, cname) {
+	return Object.values(data).filter(emote=> emote.channel_name === cname);
+}
