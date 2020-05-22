@@ -112,10 +112,11 @@ https://psim.us/dev
 <script src="/js/battle-tooltips.js?"></script>
 <script src="/js/client-battle.js?"></script>
 <script src="/js/client-rooms.js?"></script>
+<script src="/js/battle-sound.js?"></script>
 <script src="/data/graphics.js?"></script>
 <script src="/sprites/bgs/bg-index.js"></script>
 <script src="/emotes/emoteregex.js"></script>
-<script src="/badges/badge-anim.js"></script>
+<!-- <script src="/badges/badge-anim.js"></script> -->
 
 <script>
 	var app = new App();
@@ -125,7 +126,6 @@ https://psim.us/dev
 <script src="/data/moves.js?"></script>
 <script src="/data/items.js?"></script>
 <script src="/data/abilities.js?"></script>
-<script src="/data/tpp.js"></script>
 
 <script src="/data/search-index.js?"></script>
 <script src="/data/teambuilder-tables.js?"></script>

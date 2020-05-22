@@ -102,7 +102,7 @@ header('P3P: CP="NOI CUR ADM DEV COM NAV STA OUR IND"');
 var configHost = <?php echo json_encode($config['host']) ?>;
 var config = <?php echo json_encode(json_encode($config)) ?>;
 var yourOrigin = <?php echo json_encode($protocol . '//' . $host) ?>;
-var myOrigin = 'https://play.pokemonshowdown.com';
+var myOrigin = 'https://tppleague.me';
 
 function postReply (message) {
 	if (window.parent.postMessage === postReply) return;

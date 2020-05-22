@@ -114,12 +114,12 @@ if (typeof window === 'undefined') {
 }
 
 if (window.soundManager) {
-	soundManager.setup({url: 'https://play.pokemonshowdown.com/swf/'});
+	soundManager.setup({url: '/swf/'});
 	if (window.Replays) soundManager.onready(window.Replays.soundReady);
 	soundManager.onready(() => {
 		soundManager.createSound({
 			id: 'notif',
-			url: 'https://play.pokemonshowdown.com/audio/notification.wav',
+			url: '/audio/notification.wav',
 		});
 	});
 }
@@ -277,15 +277,15 @@ const Dex = new class implements ModdedDex {
 	resourcePrefix = (() => {
 		let prefix = '';
 		if (window.document?.location?.protocol !== 'http:') prefix = 'https:';
-		return `${prefix}//play.pokemonshowdown.com/`;
+		return `${prefix}//tppleague.me/`;
 	})();
 
 	fxPrefix = (() => {
 		if (window.document?.location?.protocol === 'file:') {
-			if (window.Replays) return `https://play.pokemonshowdown.com/fx/`;
+			if (window.Replays) return `https://tppleague.me/fx/`;
 			return `fx/`;
 		}
-		return `//play.pokemonshowdown.com/fx/`;
+		return `//tppleague.me/fx/`;
 	})();
 
 	loadedSpriteData = {xy: 1, bw: 0};

@@ -15,7 +15,7 @@
 		<script>
 			function loadRemoteData(src) {
 				var scriptEl = document.createElement('script');
-				scriptEl.src = src.replace(/.*\/?data\//g, 'https://play.pokemonshowdown.com/data/');
+				scriptEl.src = src.replace(/.*\/?data\//g, 'https://tppleague.me/data/');
 				document.head.appendChild(scriptEl);
 			}
 			var Config = {testclient: true};
@@ -85,7 +85,7 @@
 			window.exports = window;
 		</script>
 
-		<script src="https://play.pokemonshowdown.com/config/config.js"></script>
+		<script src="https://tppleague.me/config/config.js"></script>
 		<script src="js/battledata.js" onerror="alert('You must build the client with `node build` before using testclient.html')"></script>
 		<script src="data/pokedex-mini.js" onerror="loadRemoteData(this.src)"></script>
 		<script src="data/pokedex-mini-bw.js" onerror="loadRemoteData(this.src)"></script>

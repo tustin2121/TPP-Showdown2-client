@@ -59,7 +59,7 @@ class PSPrefs extends PSStreamModel<string | null> {
 
 	storageEngine: 'localStorage' | 'iframeLocalStorage' | '' = '';
 	storage: {[k: string]: any} = {};
-	readonly origin = 'https://play.pokemonshowdown.com';
+	readonly origin = 'https://tppleague.me';
 	constructor() {
 		super();
 
@@ -222,7 +222,7 @@ class PSTeams extends PSStreamModel<'team' | 'format'> {
 		this.byKey[team.key] = team;
 	}
 	unpackOldBuffer(buffer: string) {
-		alert("Your team storage format is too old for PS. You'll need to upgrade it at https://play.pokemonshowdown.com/recoverteams.html");
+		alert("Your team storage format is too old for PS. You'll need to upgrade it at https://tppleague.me/recoverteams.html");
 		this.list = [];
 		return;
 	}
@@ -298,8 +298,10 @@ interface PSGroup {
 }
 
 class PSServer {
+	// id = 'showdown';
+	// host = 'sim3.psim.us';
 	id = 'showdown';
-	host = 'sim3.psim.us';
+	host = 'tppleague.me';
 	port = 8000;
 	altport = 80;
 	registered = true;

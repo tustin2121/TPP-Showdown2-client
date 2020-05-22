@@ -1,16 +1,25 @@
-Config.origindomain = 'play.pokemonshowdown.com';
+// Config.origindomain = 'play.pokemonshowdown.com';
 // `defaultserver` specifies the server to use when the domain name in the
 // address bar is `Config.origindomain`.
+// Config.defaultserver = {
+// 	id: 'showdown',
+// 	host: 'sim3.psim.us',
+// 	port: 443,
+// 	httpport: 8000,
+// 	altport: 80,
+// 	registered: true
+// };
 Config.defaultserver = {
 	id: 'showdown',
-	host: 'sim3.psim.us',
+	host: 'dev.tppleague.me',
+	// host: 'new.tppleague.me',
 	port: 443,
-	httpport: 8000,
-	altport: 80,
 	registered: true
 };
 
 function Storage() {}
+
+Storage.origin = 'https://dev.tppleague.me';
 
 Storage.initialize = function () {
 	if (window.nodewebkit) {
@@ -220,13 +229,11 @@ if (!Storage.bg.id) {
  *********************************************************/
 
 // Prefs are canonically stored in showdown_prefs in localStorage
-// in the origin https://play.pokemonshowdown.com
+// in the origin https://tppleague.me
 
 // We try loading things from the origin, anyway, in case third-party
 // localStorage is banned, and since prefs are cached in other
 // places in certain cases.
-
-Storage.origin = 'https://play.pokemonshowdown.com';
 
 Storage.prefs = function (prop, value, save) {
 	if (value === undefined) {
@@ -344,6 +351,11 @@ Storage.initPrefs = function () {
 		this.whenPrefsLoaded.load();
 		if (!window.nodewebkit) this.whenTeamsLoaded.load();
 		return;
+	} else {
+		if (location.protocol == "http:") {
+			console.log("How on earth are you connecting to this site via HTTP??");
+		}
+		console.log("Failed to meet connection requirements.");
 	}
 
 	// Cross-origin
@@ -359,7 +371,7 @@ Storage.initPrefs = function () {
 
 	if (document.location.hostname !== Config.origindomain) {
 		$(
-			'<iframe src="https://play.pokemonshowdown.com/crossdomain.php?host=' +
+			'<iframe src="https://tppleague.me/crossdomain.php?host=' +
 			encodeURIComponent(document.location.hostname) +
 			'&path=' + encodeURIComponent(document.location.pathname.substr(1)) +
 			'&protocol=' + encodeURIComponent(document.location.protocol) +
@@ -368,7 +380,7 @@ Storage.initPrefs = function () {
 	} else {
 		Config.server = Config.server || Config.defaultserver;
 		$(
-			'<iframe src="https://play.pokemonshowdown.com/crossprotocol.html?v1.2" style="display: none;"></iframe>'
+			'<iframe src="https://tppleague.me/crossprotocol.html?v1.2" style="display: none;"></iframe>'
 		).appendTo('body');
 		setTimeout(function () {
 			// HTTPS may be blocked

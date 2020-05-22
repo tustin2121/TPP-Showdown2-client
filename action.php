@@ -11,7 +11,7 @@ error_reporting(E_ALL);
 
 if (@$_GET['act'] === 'dlteam') {
 	header("Content-Type: text/plain; charset=utf-8");
-	if (substr(@$_SERVER['HTTP_REFERER'], 0, 32) !== 'https://play.pokemonshowdown.com') {
+	if (substr(@$_SERVER['HTTP_REFERER'], 0, 32) !== 'https://tppleague.me') {
 		// since this is only to support Chrome on HTTPS, we can get away with a very specific referer check
 		die("access denied");
 	}

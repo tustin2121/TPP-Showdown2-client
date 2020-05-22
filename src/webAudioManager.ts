@@ -103,7 +103,7 @@ class Sound extends LoadableMedia implements Playable {
         console.debug("♫ CREATE: "+this.id);
         
         this.volNode = this.audioCtx.createGain();
-        if (audioCtx.createStereoPanner) {
+        if (this.audioCtx.createStereoPanner) {
             this.panNode = this.audioCtx.createStereoPanner();
             this.panNode.connect(this.volNode);
 		}
@@ -140,7 +140,7 @@ class Sound extends LoadableMedia implements Playable {
         }
         if (playDepth !== undefined && playDepth !== this.playCount) return false;
         
-        time = (time || 0) + audioCtx.currentTime;
+        time = (time || 0) + this.audioCtx.currentTime;
         offset = ((typeof offset === "number")?offset : 0)
         
         this.sourceNode = this.audioCtx.createBufferSource();
@@ -163,7 +163,7 @@ class Sound extends LoadableMedia implements Playable {
         this.playCount--;
         if (!this.sourceNode) return true; //Can't double-stop
         
-        time = (time || 0) + audioCtx.currentTime;
+        time = (time || 0) + this.audioCtx.currentTime;
         let srcNode = this.sourceNode;
         this.sourceNode.onended = function(){
             srcNode.disconnect();
@@ -605,7 +605,11 @@ class SoundManager {
 	
 	setup(options: object) {
 		// compatibility, not used
-	}
+    }
+    
+    onready(fn: Function) {
+        $(fn);
+    }
 	
 	createSound(config: SoundConfig): Sound {
         let sound;

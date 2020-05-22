@@ -414,12 +414,12 @@ class TeamDropdown extends preact.Component<{format: string}> {
 				<div class="team">
 					<strong>Random team</strong>
 					<small>
-						<span class="picon" style="float:left;background:transparent url(https://play.pokemonshowdown.com/sprites/pokemonicons-sheet.png?a6) no-repeat scroll -0px -0px"></span>
-						<span class="picon" style="float:left;background:transparent url(https://play.pokemonshowdown.com/sprites/pokemonicons-sheet.png?a6) no-repeat scroll -0px -0px"></span>
-						<span class="picon" style="float:left;background:transparent url(https://play.pokemonshowdown.com/sprites/pokemonicons-sheet.png?a6) no-repeat scroll -0px -0px"></span>
-						<span class="picon" style="float:left;background:transparent url(https://play.pokemonshowdown.com/sprites/pokemonicons-sheet.png?a6) no-repeat scroll -0px -0px"></span>
-						<span class="picon" style="float:left;background:transparent url(https://play.pokemonshowdown.com/sprites/pokemonicons-sheet.png?a6) no-repeat scroll -0px -0px"></span>
-						<span class="picon" style="float:left;background:transparent url(https://play.pokemonshowdown.com/sprites/pokemonicons-sheet.png?a6) no-repeat scroll -0px -0px"></span>
+						<span class="picon" style="float:left;background:transparent url(/sprites/pokemonicons-sheet.png?a6) no-repeat scroll -0px -0px"></span>
+						<span class="picon" style="float:left;background:transparent url(/sprites/pokemonicons-sheet.png?a6) no-repeat scroll -0px -0px"></span>
+						<span class="picon" style="float:left;background:transparent url(/sprites/pokemonicons-sheet.png?a6) no-repeat scroll -0px -0px"></span>
+						<span class="picon" style="float:left;background:transparent url(/sprites/pokemonicons-sheet.png?a6) no-repeat scroll -0px -0px"></span>
+						<span class="picon" style="float:left;background:transparent url(/sprites/pokemonicons-sheet.png?a6) no-repeat scroll -0px -0px"></span>
+						<span class="picon" style="float:left;background:transparent url(/sprites/pokemonicons-sheet.png?a6) no-repeat scroll -0px -0px"></span>
 					</small>
 				</div>
 			</button>;

@@ -212,13 +212,9 @@ function toId() {
 		 * domain in order to have access to the correct cookies.
 		 */
 		getActionPHP: function () {
-			var ret = '/~~' + Config.server.id + '/action.php';
-			if (Config.testclient) {
-				ret = 'https://' + Config.origindomain + ret;
-			}
-			return (this.getActionPHP = function () {
-				return ret;
-			})();
+			// TPP: Remove weird /~~showdown/ URL building, and use direct link.
+			return '/action.php';
+			// TPP change end
 		},
 		/**
 		 * Process a signed assertion returned from the login server.
